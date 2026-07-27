@@ -40,14 +40,27 @@ else
     echo "  package INFO version = ${INFO_VERSION}  ok"
 fi
 
-# On a pull request, require the version to have moved. Landing twice on one
-# build number produces a package DSM will not install over the previous one.
+# Every change that ships must carry a new version. DSM silently declines a
+# package whose build number is not newer than the installed one, and the
+# Releases page is where users are told to download from -- so a forgotten bump
+# means people keep receiving the previous build while the code says otherwise.
+# That is exactly what happened here: VERSION reached 2.1.0 while the newest
+# published release was still v1.0.0, the stub package that starts nothing.
+#
+# Documentation-only changes are exempt, because they ship nothing.
 if [ -n "${CHECK_BUMPED:-}" ]; then
     base="${GITHUB_BASE_REF:-main}"
     if git rev-parse --verify -q "origin/${base}" >/dev/null 2>&1; then
         previous="$(git show "origin/${base}:VERSION" 2>/dev/null | tr -d ' \t\r\n')"
-        if [ -n "${previous}" ] && [ "${previous}" = "${VERSION}" ]; then
-            echo "::error file=VERSION::still ${VERSION}; bump it, or DSM will decline the upgrade"
+        changed="$(git diff --name-only "origin/${base}...HEAD" 2>/dev/null \
+                   | grep -vE '^docs/|\.md$' || true)"
+        if [ -z "${changed}" ]; then
+            echo "  no shipped files changed; no version bump required"
+        elif [ -n "${previous}" ] && [ "${previous}" = "${VERSION}" ]; then
+            echo "::error file=VERSION::still ${VERSION}, but shipped files changed:"
+            echo "${changed}" | head -5 | sed 's/^/    /'
+            echo "  Bump VERSION (and APP_VERSION), or DSM declines the upgrade"
+            echo "  and the Releases page keeps serving the previous build."
             status=1
         elif [ -n "${previous}" ]; then
             echo "  bumped: ${previous} -> ${VERSION}  ok"
