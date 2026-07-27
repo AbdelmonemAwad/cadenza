@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import secrets
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -155,7 +156,21 @@ class Transcoder:
             # Do not give up: -err_detect ignore_err often salvages a damaged file.
             log.info("attempting to salvage damaged file: %s", src.name)
 
-        tmp = dst.with_suffix(dst.suffix + ".part")
+        # The partial marker goes in the STEM, so the extension stays intact:
+        # "track.flac" is written as ".track.part-a1b2c3.flac".
+        #
+        # It used to append the marker instead, giving "track.flac.part". None
+        # of the presets pass -f, so ffmpeg picks the muxer from the output
+        # extension -- and ".part" is not a format, so it failed with "Unable
+        # to find a suitable output format" on every single conversion. Nothing
+        # caught it: the tests never invoked ffmpeg, and the container job only
+        # checked that the binary answers -version.
+        #
+        # The name is also unique and hidden. Two jobs converting the same
+        # track to the same preset used to share one temp path, so each wrote
+        # over the other's output, and a crash left a visible "track.flac.part"
+        # sitting in the user's library.
+        tmp = dst.with_name(f".{dst.stem}.part-{secrets.token_hex(4)}{dst.suffix}")
         out_dir.mkdir(parents=True, exist_ok=True)
         cmd = [
             self.s.ffmpeg_bin, "-y", "-nostdin", "-v", "error",
