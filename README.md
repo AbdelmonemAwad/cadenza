@@ -11,7 +11,7 @@ Convert formats. Never lose a file.
 [![DSM](https://img.shields.io/badge/DSM-7.x-0f7bd8.svg)](https://www.synology.com/dsm)
 [![arch](https://img.shields.io/badge/arch-x86__64-lightgrey.svg)](#requirements)
 
-[العربية](README.ar.md) · [Architecture](docs/ARCHITECTURE.md) · [Contributing](CONTRIBUTING.md)
+[العربية](README.ar.md) · [Install](docs/INSTALL.md) · [Operations](docs/OPERATIONS.md) · [Architecture](docs/ARCHITECTURE.md) · [Third-party licences](docs/THIRD-PARTY.md) · [Contributing](CONTRIBUTING.md)
 
 </div>
 

@@ -40,7 +40,6 @@ they are the ones that constrain how Cadenza may be distributed.
 | Component | Version | Licence | Copyleft | Used as |
 | --- | --- | --- | --- | --- |
 | mutagen | 1.47.0 | GPL-2.0-or-later | strong | **imported** |
-| Unidecode | 1.3.8 | GPL-2.0-or-later | strong | shipped, unused |
 | ffmpeg | n7.1 (BtbN, linux64 lgpl-shared) | LGPL-3.0-or-later | weak | subprocess |
 | ffprobe | n7.1 (BtbN, linux64 lgpl-shared) | LGPL-3.0-or-later | weak | subprocess |
 | fpcalc | 1.5.1 (chromaprint, linux-x86_64) | LGPL-2.1-only | weak | subprocess |
@@ -56,27 +55,22 @@ Licence determined from `mutagen-1.47.0.dist-info/METADATA`
 (`License: GPL-2.0-or-later`, plus the GPLv2+ classifier); full text in
 `mutagen-1.47.0.dist-info/COPYING`.
 
-### Unidecode 1.3.8 — GPL-2.0-or-later, shipped but never imported
+### Unidecode — removed
 
-Pinned directly at `backend/requirements.txt:34`. It is not a transitive
-dependency: none of the other pins requires it, so removing that line removes it
-from the tree entirely.
+It was pinned directly at `backend/requirements.txt` and is GPL-2.0-or-later,
+but it was imported nowhere: a repository-wide, case-insensitive search returned
+exactly one hit, the requirements line itself. It was not a transitive
+dependency either — removing the pin removes it from the resolved tree
+entirely, so nothing else needed it.
 
-A repository-wide, case-insensitive search for `unidecode` (all file types,
-`node_modules` excluded) returns exactly one hit — the requirements line itself.
-There are no import sites in `backend/app`. It is nevertheless distributed, by
-`docker/Dockerfile:28` into the image and by
-`packaging/synology/build-native-payload.sh` into the native payload.
+It was nevertheless distributed, into the container image by
+`docker/Dockerfile` and into the native payload by
+`packaging/synology/build-native-payload.sh`. That put a copyleft component
+inside an MIT-licensed package in exchange for no functionality at all.
 
-So the GPL exposure is real (a GPL-2.0-or-later work is being distributed inside
-an MIT-licensed package) but it exists for no functional reason. Deleting
-`backend/requirements.txt:34` removes the obligation outright, with no code
-change. Tracked with the mutagen question in issue #23.
-
-Licence from `Unidecode-1.3.8.dist-info/METADATA` (`License: GPL` plus the
-GPLv2+ classifier, which supplies the version the free-text field omits) and
-`Unidecode-1.3.8.dist-info/LICENSE`, which is the verbatim GPL v2 text with the
-"or (at your option) any later version" grant.
+The pin was deleted. Arabic and Latin normalisation is done by
+`backend/app/core/dedup.py` without it. A comment in `requirements.txt` records
+why it is absent, so it is not innocently added back.
 
 ### ffmpeg and ffprobe n7.1 — LGPL-3.0-or-later, subprocess
 
