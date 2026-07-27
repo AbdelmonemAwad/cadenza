@@ -71,8 +71,28 @@ mkdir -p "${STAGE}" "${CACHE}"
 fetch "${PBS_URL}" "${CACHE}/cpython-${PY_VERSION}.tar.gz"
 info "unpacking CPython ${PY_VERSION} ..."
 rm -rf "${STAGE}/python"
-tar -xzf "${CACHE}/cpython-${PY_VERSION}.tar.gz" -C "${STAGE}"
-[ -x "${STAGE}/python/bin/python3" ] || die "interpreter missing after unpack"
+# share/ is excluded at extraction, not deleted afterwards. It is thousands of
+# terminfo entries that are almost all symlinks, and creating a symlink on
+# Windows needs a privilege developers do not normally have -- so extracting it
+# aborted the whole build on a Windows workstation with hundreds of "Cannot
+# create symlink" errors. A server never reads terminfo, and the trim step
+# below removed share/ regardless, so the only thing extracting it achieved was
+# breaking the build for anyone not on Linux.
+tar -xzf "${CACHE}/cpython-${PY_VERSION}.tar.gz" -C "${STAGE}" \
+    --exclude='python/share/terminfo' --exclude='python/share/man' || true
+
+# tar exits 0 even when every symlink failed, and python/bin/python3 IS a
+# symlink to python3.12 -- the exact path start-stop-status invokes. A Windows
+# workstation cannot create symlinks without a privilege developers do not
+# normally hold, so the build would quietly produce a package whose interpreter
+# entry point does not exist and only fail on the NAS. Refuse instead.
+if [ ! -e "${STAGE}/python/bin/python3" ]; then
+    die "the interpreter did not unpack: python/bin/python3 is a symlink and this
+         filesystem would not create it. Build on Linux, or in WSL, or take the
+         .spk that CI produces -- a package built here would install and then
+         fail to start."
+fi
+[ -x "${STAGE}/python/bin/python3" ] || die "python/bin/python3 is not executable"
 
 PY_MM="$(echo "${PY_VERSION}" | cut -d. -f1,2)"
 
