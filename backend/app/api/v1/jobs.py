@@ -14,6 +14,8 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import SESSION_COOKIE
+from app.core.auth import verify_session
 from app.db.base import get_session
 from app.db.models import Job, ScheduledTask
 from app.services.job_runner import runner
@@ -80,7 +82,16 @@ async def cancel(job_id: int) -> dict:
 
 @router.websocket("/stream")
 async def stream(ws: WebSocket) -> None:
-    """Live job progress feed."""
+    """Live job progress feed.
+
+    The session is checked explicitly here. A router-level HTTP dependency does
+    not gate a WebSocket route, so relying on the one in router.py would leave
+    this endpoint open while looking protected.
+    """
+    if verify_session(ws.cookies.get(SESSION_COOKIE)) is None:
+        await ws.close(code=1008)      # 1008 = policy violation
+        return
+
     await ws.accept()
     queue = runner.subscribe()
     try:

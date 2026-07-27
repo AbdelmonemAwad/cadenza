@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     http_port: int = 8760
     api_prefix: str = "/api/v1"
     default_locale: str = "en"
+    # Off in production: the OpenAPI schema is a map of every destructive
+    # endpoint and its exact request shape.
+    enable_docs: bool = False
 
     # --- Scanning ---
     follow_symlinks: bool = False

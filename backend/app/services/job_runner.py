@@ -39,7 +39,12 @@ class JobRunner:
 
     def __init__(self) -> None:
         self.settings = get_settings()
-        self._queue: asyncio.Queue[int] = asyncio.Queue()
+        # Created in start(), not here. An asyncio.Queue binds to the running
+        # loop on first use, and this class is instantiated at module import
+        # where there is no loop yet -- so a queue made here would latch onto
+        # whichever loop happened to touch it first and raise
+        # "bound to a different event loop" for every later one.
+        self._queue: asyncio.Queue[int] | None = None
         self._task: asyncio.Task | None = None
         self._current: int | None = None
         self._cancel_flags: set[int] = set()
@@ -56,7 +61,15 @@ class JobRunner:
 
     # ---- Lifecycle ----
 
+    def _get_queue(self) -> asyncio.Queue[int]:
+        if self._queue is None:
+            self._queue = asyncio.Queue()
+        return self._queue
+
     async def start(self) -> None:
+        # A fresh queue per start, bound to the loop that is actually running.
+        self._queue = asyncio.Queue()
+        self._subscribers.clear()
         if self._task is None or self._task.done():
             self._task = asyncio.create_task(self._loop(), name="cadenza-job-runner")
 
@@ -78,7 +91,7 @@ class JobRunner:
             s.add(job)
             await s.flush()
             job_id = job.id
-        await self._queue.put(job_id)
+        await self._get_queue().put(job_id)
         await self.broadcast({"type": "job.queued", "job_id": job_id, "kind": kind})
         return job_id
 
@@ -98,7 +111,7 @@ class JobRunner:
 
     async def _loop(self) -> None:
         while True:
-            job_id = await self._queue.get()
+            job_id = await self._get_queue().get()
             self._current = job_id
             try:
                 await self._run(job_id)
@@ -109,7 +122,7 @@ class JobRunner:
             finally:
                 self._current = None
                 self._cancel_flags.discard(job_id)
-                self._queue.task_done()
+                self._get_queue().task_done()
 
     async def _run(self, job_id: int) -> None:
         async with session_scope() as s:
