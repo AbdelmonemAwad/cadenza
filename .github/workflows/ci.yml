@@ -41,6 +41,19 @@ jobs:
       - name: Scan commit history
         run: ./gitleaks detect --source . --redact --exit-code 1
 
+      # A copyleft dependency reaching users unnoticed is the same class of
+      # problem as a leaked credential: cheap to prevent, awkward to undo once
+      # published. Unidecode was GPL, pinned directly, imported nowhere, and
+      # shipped in both the image and the package before anyone looked.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Check dependency licences
+        run: |
+          python -m pip install --upgrade pip >/dev/null
+          python scripts/check-licences.py
+
   backend:
     name: Backend (Python ${{ matrix.python }})
     runs-on: ubuntu-latest
