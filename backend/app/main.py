@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,6 +15,7 @@ from app.db.base import engine, init_db
 from app.logging_conf import setup_logging
 from app.services.job_runner import runner
 from app.services.scheduler import scheduler
+from app.web import mount_frontend
 
 log = logging.getLogger(__name__)
 
@@ -95,6 +97,11 @@ def create_app() -> FastAPI:
     @app.get("/health", include_in_schema=False)
     async def health() -> dict:
         return {"status": "ok", "app": APP_NAME, "version": APP_VERSION}
+
+    # Last, deliberately. The SPA fallback matches any unclaimed path, so
+    # registering it before the API would swallow every endpoint.
+    if s.www_dir is not None:
+        mount_frontend(app, Path(s.www_dir), s.api_prefix)
 
     return app
 

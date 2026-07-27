@@ -55,10 +55,24 @@ cp "${ROOT_DIR}/README.md"    "${STAGE}/doc/" 2>/dev/null || true
 cp "${ROOT_DIR}/README.ar.md" "${STAGE}/doc/" 2>/dev/null || true
 cp "${ROOT_DIR}/LICENSE"      "${STAGE}/doc/" 2>/dev/null || true
 
-# The container image is deliberately NOT bundled. This package cannot reach
-# the Docker daemon on DSM 7 (see issue #2), so shipping a ~1.2 GB image inside
-# it would add a 244 MB download that nothing can use. The image is published
-# to ghcr.io instead and Container Manager pulls it directly.
+# The container image is deliberately NOT bundled. This package does not use
+# Docker at all -- it runs the application directly -- and Container Manager
+# users pull the image from ghcr.io, so embedding it would add a large download
+# that neither path needs.
+
+# ---- The native runtime -----------------------------------------------------
+# Interpreter, dependencies, ffmpeg/ffprobe/fpcalc, the application and the UI.
+# NATIVE=0 builds the metadata-only package: useful for iterating on the DSM
+# scripts without a 300 MB download each time, and the only thing that works on
+# a machine with no network. It produces a package that installs and cannot
+# start, so it is never what gets released -- CI builds with NATIVE=1.
+: "${NATIVE:=1}"
+if [ "${NATIVE}" = "1" ]; then
+    info "building the native payload (interpreter, deps, tools, app, UI) ..."
+    bash "${SCRIPT_DIR}/build-native-payload.sh" "${STAGE}"         || die "native payload build failed"
+else
+    info "NATIVE=0: skipping the runtime. The package will install but not start."
+fi
 
 # A small CLI, linked into /usr/local/bin by usr-local-linker.
 cat > "${STAGE}/bin/cadenza" <<'CLI'

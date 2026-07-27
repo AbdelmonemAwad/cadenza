@@ -1,5 +1,11 @@
 fastapi==0.115.6
-uvicorn[standard]==0.34.0
+# Not uvicorn[standard]: that extra pulls uvloop, httptools, watchfiles and
+# PyYAML, four compiled wheels the app never uses -- uvloop alone is the
+# largest package in the tree. websockets IS needed: jobs.py declares a
+# /jobs/stream websocket and the UI connects to it, so it is pinned directly.
+uvicorn==0.34.0
+websockets==14.1
+h11==0.14.0
 pydantic==2.10.4
 pydantic-settings==2.7.0
 sqlalchemy==2.0.36
@@ -8,13 +14,14 @@ greenlet==3.1.1
 
 # --- audio and tags ---
 mutagen==1.47.0
-pyacoustid==1.3.0
-audioread==3.0.1
+# 1.3.0 is sdist-only on PyPI, so an offline, wheel-only install -- which is
+# what the native package needs, since a NAS has no compiler -- cannot resolve
+# it. 1.3.1 publishes a wheel and is otherwise the same ctypes wrapper.
+pyacoustid==1.3.1
 
 # --- http and providers ---
 httpx[http2]==0.28.1
 tenacity==9.0.0
-musicbrainzngs==0.7.1
 
 # --- Apple Music developer token (ES256) ---
 pyjwt[crypto]==2.10.1
@@ -24,5 +31,8 @@ cryptography==44.0.0
 apscheduler==3.11.0
 python-multipart==0.0.20
 rapidfuzz==3.11.0
-unidecode==1.3.8
+# Unidecode is deliberately NOT here. It is GPL-2.0-or-later, this project is
+# MIT, and it was never imported anywhere in the codebase -- so it added a
+# copyleft component to everything we ship in exchange for nothing. Arabic and
+# Latin normalisation is done by app/core/dedup.py without it.
 pillow==11.1.0

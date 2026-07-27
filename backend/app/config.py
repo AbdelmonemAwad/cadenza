@@ -55,6 +55,12 @@ class Settings(BaseSettings):
     # user knowing it is JSON underneath.
     cors_dev_origins: Annotated[tuple[str, ...], NoDecode] = ()
 
+    # Where the built frontend lives, when the application serves it itself.
+    # Unset in the container, where nginx serves the bundle and this must stay
+    # off so that path is unchanged. The native Synology package has no nginx
+    # -- DSM starts one Python process -- so it points this at target/www.
+    www_dir: Path | None = None
+
     @field_validator("cors_dev_origins", mode="before")
     @classmethod
     def _split_origins(cls, value: Any) -> Any:

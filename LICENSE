@@ -1,3 +1,42 @@
+IMPORTANT — what this covers, and what it does not
+==================================================
+
+The MIT terms below apply to Cadenza's own source code. They do not describe
+every artifact this project distributes, and saying only "MIT" would be
+inaccurate.
+
+Distributed builds are a combined work under GPL-2.0-or-later.
+---------------------------------------------------------------
+The Docker image and the Synology .spk bundle mutagen, which is
+GPL-2.0-or-later and is imported into the same Python process by
+backend/app/core/tags.py. Under the GPL, importing a module into your own
+interpreter forms a combined work, so those builds are conveyed under
+GPL-2.0-or-later as a whole. Anyone redistributing them takes on the GPL's
+obligations, including making the corresponding source available.
+
+mutagen is kept because it reads and writes tags across every format Cadenza
+supports and there is no equivalent with that coverage. It is the one such
+trade in the project, it is deliberate, and scripts/check-licences.py fails the
+build if a second one appears.
+
+Cadenza's own source remains MIT.
+---------------------------------
+If you take this source without the bundled dependencies, the MIT terms below
+are all that apply to it.
+
+Bundled programs are separate works.
+------------------------------------
+ffmpeg, ffprobe (LGPL-3.0-or-later) and fpcalc (MIT AND LGPL-2.1-only) are
+invoked as separate processes, which does not create a combined work. They are
+redistributed under their own terms, with their licence texts in
+doc/licences/ inside the package and their corresponding source published with
+each release.
+
+The full inventory, read from each package's own metadata, is in
+docs/THIRD-PARTY.md.
+
+--------------------------------------------------------------------------
+
 MIT License
 
 Copyright (c) 2026 Cadenza Project

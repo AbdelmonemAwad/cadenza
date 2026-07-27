@@ -41,6 +41,19 @@ jobs:
       - name: Scan commit history
         run: ./gitleaks detect --source . --redact --exit-code 1
 
+      # A copyleft dependency reaching users unnoticed is the same class of
+      # problem as a leaked credential: cheap to prevent, awkward to undo once
+      # published. Unidecode was GPL, pinned directly, imported nowhere, and
+      # shipped in both the image and the package before anyone looked.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Check dependency licences
+        run: |
+          python -m pip install --upgrade pip >/dev/null
+          python scripts/check-licences.py
+
   backend:
     name: Backend (Python ${{ matrix.python }})
     runs-on: ubuntu-latest
@@ -257,9 +270,43 @@ jobs:
       - name: Install packaging prerequisites
         run: python -m pip install --upgrade pip pillow
 
-      # No image build here any more: the package does not embed one.
-      - name: Build .spk
-        run: bash packaging/synology/build-spk.sh
+      # Runs before the build, because a script that will not parse should stop
+      # the job in two seconds rather than after a 300 MB download. It also
+      # rejects control characters: a generation layer once ate an escape and
+      # left a literal 0x01 where a sed backreference belonged, which made the
+      # pattern match nothing and the build request ".tar.gz". That byte is
+      # invisible in a diff, so it is checked mechanically.
+      - name: Check the shell scripts
+        run: bash scripts/check-shell-scripts.sh
+
+      # The native payload ships the built UI, so it has to exist before the
+      # package is assembled. build-native-payload.sh fails rather than
+      # producing a package that serves a blank page.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build the frontend bundle
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund && npm run build
+
+      # The interpreter and the ffmpeg build are large and versioned, so they
+      # are worth caching between runs. The key covers both, since either can
+      # change independently.
+      - name: Cache the downloaded runtime
+        uses: actions/cache@v4
+        with:
+          path: build/cache
+          key: native-runtime-${{ hashFiles('packaging/synology/build-native-payload.sh', 'backend/requirements.txt') }}
+
+      # NATIVE=1 is the real package: interpreter, dependencies, ffmpeg and the
+      # app. The payload build refuses to finish unless the staged tree can
+      # actually import the application and every preset codec is present, so
+      # this step failing means the package would not have worked on the NAS.
+      - name: Build .spk (native runtime)
+        run: NATIVE=1 bash packaging/synology/build-spk.sh
 
       # A .spk DSM cannot open is worse than no .spk, so check the archive
       # layout and the checksum the installer verifies.
@@ -296,6 +343,26 @@ jobs:
             echo "MISSING from package.tgz: ${proto} (protocol-file points here)"; exit 1; }
           echo "  present in target/: ${proto}"
           python3 -c "import json;json.load(open('/tmp/payload/${uidir}/config'))"             || { echo "ui/config is not valid JSON"; exit 1; }
+
+          # The runtime the package cannot start without. Each of these was
+          # absent from the package for its whole life before the native build.
+          for required in python/bin/python3 app/app/main.py www/index.html                           bin/ffmpeg bin/ffprobe bin/fpcalc; do
+            test -e "/tmp/payload/${required}" || {
+              echo "MISSING runtime component: ${required}"; exit 1; }
+          done
+          echo "  runtime present: interpreter, app, UI, ffmpeg, ffprobe, fpcalc"
+          test -x /tmp/payload/python/bin/python3 || { echo "interpreter not executable"; exit 1; }
+
+          # Boot the payload exactly as start-stop-status does. This is the
+          # difference between "the archive has the right shape" and "the
+          # service would actually come up on the NAS".
+          PYTHONHOME=/tmp/payload/python           PYTHONPATH=/tmp/payload/app:/tmp/payload/lib           PYTHONNOUSERSITE=1           LD_LIBRARY_PATH=/tmp/payload/python/lib:/tmp/payload/ffmpeg-lib           CADENZA_CONFIG_DIR=$(mktemp -d) CADENZA_QUARANTINE_ROOT=$(mktemp -d)           CADENZA_WWW_DIR=/tmp/payload/www           /tmp/payload/python/bin/python3 -c "
+          from app.main import create_app
+          app = create_app()
+          paths = {r.path for r in app.routes}
+          assert '/health' in paths
+          print(f'  payload boots: {len(paths)} routes')
+          " || { echo "::error::the packaged payload cannot start"; exit 1; }
           # The control scripts must be executable and LF-terminated, or DSM
           # fails them with an opaque error at install time.
           for s in /tmp/spk/scripts/*; do
@@ -304,8 +371,31 @@ jobs:
           done
           echo "package structure OK"
 
+      # The licence texts have to be inside the package, or it ships LGPL
+      # binaries accompanied by nothing but this project's MIT licence.
+      - name: Verify the redistributed binaries carry their licences
+        run: |
+          for lic in doc/licences/ffmpeg-LICENSE.txt doc/licences/fpcalc-LICENSE.md                      doc/licences/README.txt; do
+            test -s "/tmp/payload/${lic}" || { echo "MISSING licence text: ${lic}"; exit 1; }
+            echo "  present: ${lic}"
+          done
+          grep -q "LESSER GENERAL PUBLIC LICENSE" /tmp/payload/doc/licences/ffmpeg-LICENSE.txt             || { echo "the ffmpeg licence text is not an LGPL text"; exit 1; }
+          # LGPLv3, not v2.1 -- BtbN builds with --enable-version3. Shipping the
+          # wrong text is a notice defect, so the version is asserted here.
+          grep -q "Version 3" /tmp/payload/doc/licences/ffmpeg-LICENSE.txt             || { echo "expected the LGPLv3 text from the lgpl-shared build"; exit 1; }
+
       - uses: actions/upload-artifact@v4
         with:
           name: cadenza-spk
           path: dist/*.spk
           retention-days: 30
+
+      # LGPL 2.1 s.4 does not accept a download link as source delivery, so the
+      # corresponding source travels with the binaries it belongs to.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cadenza-thirdparty-source
+          path: build/cache/sources/*
+          retention-days: 90
+          if-no-files-found: warn

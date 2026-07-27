@@ -11,7 +11,7 @@ Convert formats. Never lose a file.
 [![DSM](https://img.shields.io/badge/DSM-7.x-0f7bd8.svg)](https://www.synology.com/dsm)
 [![arch](https://img.shields.io/badge/arch-x86__64-lightgrey.svg)](#requirements)
 
-[العربية](README.ar.md) · [Architecture](docs/ARCHITECTURE.md) · [Contributing](CONTRIBUTING.md)
+[العربية](README.ar.md) · [Install](docs/INSTALL.md) · [Operations](docs/OPERATIONS.md) · [Architecture](docs/ARCHITECTURE.md) · [Third-party licences](docs/THIRD-PARTY.md) · [Contributing](CONTRIBUTING.md)
 
 </div>
 
@@ -62,13 +62,47 @@ ARM-based models (DS220j, DS223, …) are not supported: the image is built for
 
 ## Install
 
-Cadenza runs as a container, through **Container Manager**.
+Two ways, and they are equals. Pick on how you prefer to run things, not on
+capability — both give you the same application.
 
-> **Not via Package Center.** DSM 7 does not allow an unsigned third-party
-> package to run as root, and reaching the Docker daemon requires exactly that.
-> A `.spk` therefore cannot start this application on DSM 7 — see
-> [#2](https://github.com/AbdelmonemAwad/cadenza/issues/2). Container Manager is
-> the supported path and needs no elevated privileges.
+| | **DSM package** (`.spk`) | **Container Manager** |
+|---|---|---|
+| Needs Docker | No | Yes |
+| Managed from | Package Center | Container Manager |
+| DSM desktop icon | Yes | No |
+| Start/stop | Package Center | Container Manager |
+| Updates | Install a newer `.spk` | Pull a newer image |
+| Download | Larger — it carries its own Python and ffmpeg | Smaller `.spk`, image pulled separately |
+
+Full walkthrough for both, including what to prepare first:
+**[docs/INSTALL.md](docs/INSTALL.md)**.
+
+### A. DSM package
+
+The package runs Cadenza itself. It bundles its own Python interpreter, its
+dependencies and static `ffmpeg`/`ffprobe`/`fpcalc`, so it needs neither Docker
+nor anything else installed on the NAS.
+
+**Before you install**, create the folder for Cadenza's database and settings
+in File Station — for example `/volume1/docker/cadenza` — signed in as the
+account you want Cadenza to run as. If it does not exist, or that account
+cannot write to it, Cadenza refuses to start and says so in its log.
+
+**1.** Download the `.spk` from [Releases](https://github.com/AbdelmonemAwad/cadenza/releases).
+
+**2.** Package Center → **Manual Install** → select the file.
+
+**3.** The wizard asks for your music folder, the web port, the config folder
+and the account to run as. Each field explains what it affects.
+
+**4.** Open Cadenza from its DSM desktop icon, or `http://<nas-address>:8760`.
+
+> DSM's firewall, if enabled, may need the port opened by hand under
+> **Control Panel → Security → Firewall**. The install log says so if the
+> package could not do it. Package Center's own *Open* button always uses 8760,
+> because that value is fixed when the package is built.
+
+### B. Container Manager
 
 **1.** Install **Container Manager** from Package Center if it is not already there.
 
