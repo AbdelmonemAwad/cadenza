@@ -239,13 +239,35 @@ done
 # source has to accompany the binaries rather than be pointed at.
 if [ "${FETCH_SOURCES:-1}" = "1" ]; then
     info "fetching the corresponding source for the redistributed binaries ..."
+
+    # BtbN builds from git, not from a release tarball, so `ffmpeg -version`
+    # reports a git describe string like "n7.1.5-10-g2aefd64d48-20260727". The
+    # first attempt at this pasted that whole string into a release URL and
+    # 404'd. Worse, had it been trimmed to "7.1" it would have fetched a
+    # release tarball that is NOT the source these binaries were built from --
+    # which is the one thing "corresponding source" has to mean. The commit is
+    # in the string: the field after the "-g" marker.
     ffver="$("${STAGE}/bin/ffmpeg" -hide_banner -version 2>/dev/null | head -1 | awk '{print $3}')"
-    case "${ffver}" in
-        n*|[0-9]*) : ;;
-        *) ffver="7.1" ;;
-    esac
-    fetch "https://ffmpeg.org/releases/ffmpeg-${ffver#n}.tar.xz"           "${CACHE}/sources/ffmpeg-${ffver#n}.tar.xz"         || info "NOTE: could not fetch ffmpeg ${ffver} source; the release job must supply it"
-    fetch "https://github.com/acoustid/chromaprint/archive/refs/tags/v1.5.1.tar.gz"           "${CACHE}/sources/chromaprint-1.5.1.tar.gz"         || info "NOTE: could not fetch chromaprint source; the release job must supply it"
+    ffcommit="$(printf '%s' "${ffver}" | sed -n 's/.*-g\([0-9a-f]\{7,\}\).*//p')"
+
+    if [ -n "${ffcommit}" ]; then
+        info "ffmpeg was built from commit ${ffcommit}"
+        fetch "https://github.com/FFmpeg/FFmpeg/archive/${ffcommit}.tar.gz"               "${CACHE}/sources/ffmpeg-${ffcommit}.tar.gz"
+    else
+        # A plain release build: the tagged tarball is the corresponding source.
+        ffrel="$(printf '%s' "${ffver}" | sed 's/^n//; s/-.*//')"
+        [ -n "${ffrel}" ] || die "cannot determine the ffmpeg version from '${ffver}'"
+        info "ffmpeg reports release ${ffrel}"
+        fetch "https://ffmpeg.org/releases/ffmpeg-${ffrel}.tar.xz"               "${CACHE}/sources/ffmpeg-${ffrel}.tar.xz"
+    fi
+
+    fetch "https://github.com/acoustid/chromaprint/archive/refs/tags/v1.5.1.tar.gz"           "${CACHE}/sources/chromaprint-1.5.1.tar.gz"
+
+    # Deliberately fatal. If the corresponding source cannot be obtained, the
+    # binaries must not be shipped either -- an LGPL package without its source
+    # is a compliance failure, not a warning.
+    info "corresponding source staged: $(ls "${CACHE}/sources" | tr '
+' ' ')"
 fi
 
 info "payload ready: $(du -sh "${STAGE}" | cut -f1)"
