@@ -3,8 +3,13 @@ name: CI
 on:
   push:
     branches: [main, develop]
+  # Deliberately unfiltered. This used to read `branches: [main, develop]`,
+  # which meant a pull request from one working branch to another ran no checks
+  # at all -- and a pull request with no checks is worse than one with failing
+  # checks, because the merge button is green either way and only the second
+  # kind says so. Stacked pull requests are the normal shape of the work here,
+  # so every one of them has to be verified on its own.
   pull_request:
-    branches: [main, develop]
 
 permissions:
   contents: read
@@ -232,7 +237,11 @@ jobs:
     name: Synology .spk
     runs-on: ubuntu-latest
     needs: [docker]
-    if: github.event_name == 'push'
+    # Runs on pull requests too. The .spk is the artifact the user actually
+    # installs, and this job is what checks its layout: checksums, executable
+    # bits and CRLF line endings in the scripts DSM runs. Restricting it to
+    # pushes meant a change that broke the package was only caught after it had
+    # already landed on main.
 
     steps:
       - uses: actions/checkout@v4
