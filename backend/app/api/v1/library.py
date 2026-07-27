@@ -7,6 +7,7 @@ from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
+from app.core.paths import PathEscape, contained
 from app.core.tags import extract_artwork, read_tags
 from app.db.base import get_session
 from app.db.models import Track, TrackStatus
@@ -103,7 +104,15 @@ async def track_artwork(track_id: int, s: AsyncSession = Depends(get_session)) -
     art = extract_artwork(path) if path.is_file() else None
     cache = {"Cache-Control": "public, max-age=86400"}
     if art is None:
-        cover = path.parent / get_settings().cover_filename
+        # cover_filename is validated as a bare filename before it can be
+        # stored, but this endpoint returns file bytes verbatim, so the result
+        # is confirmed to be inside the library too. Together those closed the
+        # arbitrary file read in issue #6.
+        try:
+            cover = contained(path.parent / get_settings().cover_filename,
+                              get_settings().music_root)
+        except PathEscape:
+            raise HTTPException(404, "no artwork available") from None
         if cover.is_file():
             return Response(cover.read_bytes(), media_type="image/jpeg", headers=cache)
         raise HTTPException(404, "no artwork available")
