@@ -292,7 +292,9 @@ jobs:
       # pattern match nothing and the build request ".tar.gz". That byte is
       # invisible in a diff, so it is checked mechanically.
       - name: Check the shell scripts
-        run: bash scripts/check-shell-scripts.sh
+        run: |
+          python -m pip install --quiet pyyaml
+          bash scripts/check-shell-scripts.sh
 
       # DSM silently declines a package whose build number is not newer than
       # the installed one, so a forgotten bump does not fail -- it looks like
