@@ -13,6 +13,7 @@ from pathlib import Path
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
+from app.core.paths import PathEscape, contained
 from app.db.models import AuditLog, Track
 
 log = logging.getLogger(__name__)
@@ -90,7 +91,12 @@ class Organizer:
 
         # Sanitise each component separately so the '/' separators survive.
         parts = [sanitize(p) for p in rendered.split("/") if p.strip()]
-        return self.s.music_root / Path(*parts).with_suffix(track.ext)
+        candidate = self.s.music_root / Path(*parts).with_suffix(track.ext)
+
+        # sanitize() should already make an escape impossible, but the template
+        # and the replacement character are both user-controlled settings, so
+        # the result is checked rather than assumed.
+        return contained(candidate, self.s.music_root)
 
     @staticmethod
     def _is_compilation(track: Track) -> bool:
@@ -146,6 +152,11 @@ class Organizer:
                 errors.append(f"missing: {src}")
                 continue
             try:
+                # The source list comes from the database, which is only as
+                # trustworthy as whatever wrote it; a row pointing outside the
+                # library must not be movable.
+                contained(src, self.s.music_root)
+                contained(dst, self.s.music_root)
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 shutil.move(str(src), str(dst))
                 self._move_sidecars(src, dst)
@@ -160,6 +171,12 @@ class Organizer:
                     src_path=p.src, dst_path=p.dst, reversible=True,
                 ))
                 self._prune_empty(src.parent)
+            except PathEscape as exc:
+                # Not an I/O problem: something asked us to move a file into or
+                # out of a location outside the library. Refuse loudly.
+                failed += 1
+                errors.append(f"{src.name}: refused, {exc}")
+                log.error("refusing move outside the library: %s -> %s (%s)", src, dst, exc)
             except OSError as exc:
                 failed += 1
                 errors.append(f"{src.name}: {exc}")
@@ -188,16 +205,31 @@ class Organizer:
                 shutil.copy2(str(cover), str(target))
 
     def _prune_empty(self, folder: Path) -> None:
-        """Remove directories the move emptied, stopping at the library root."""
-        root = self.s.music_root
-        cur = folder
+        """Remove directories the move emptied, stopping at the library root.
+
+        Two deliberate choices here, both because this is the only place the
+        organiser deletes anything:
+
+        Paths are resolved before the containment test. The comparison used to
+        run on unresolved paths, so a `..` segment or a symlink could satisfy
+        "inside music_root" while pointing outside it.
+
+        It uses rmdir, not rmtree. rmdir fails if the directory is not empty,
+        which makes the check and the delete a single atomic operation. rmtree
+        after a separate emptiness check is a TOCTOU: a scan or another writer
+        landing a file in between would have it deleted recursively.
+        """
+        root = Path(self.s.music_root).resolve(strict=False)
+        cur = folder.resolve(strict=False)
+
         while cur != root and root in cur.parents:
             try:
                 leftovers = [p for p in cur.iterdir()
                              if p.name not in ("@eaDir", ".DS_Store")]
                 if leftovers:
                     return
-                shutil.rmtree(cur, ignore_errors=True)
+                cur.rmdir()
             except OSError:
+                # Not empty any more, or not removable. Either way, stop.
                 return
             cur = cur.parent

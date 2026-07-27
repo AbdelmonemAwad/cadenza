@@ -8,6 +8,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
+from app.core.paths import PathEscape, contained
 from app.core.transcode import LEGACY_CODECS, PRESETS, Transcoder, ffmpeg_available
 from app.db.base import get_session
 from app.db.models import Track, TrackStatus
@@ -92,10 +94,21 @@ async def convert(req: ConvertRequest = Body(default=ConvertRequest())) -> dict:
     """Start a conversion job. With dry_run=true nothing is written."""
     if req.preset not in PRESETS:
         raise HTTPException(400, f"unknown preset; available: {sorted(PRESETS)}")
+    if req.dest_dir:
+        # Checked here, not only in the job. handle_convert does validate the
+        # same thing, but by then the caller already has a job id and a 200,
+        # and the refusal only surfaces in the job log. A destination outside
+        # the library is a bad request, so it is answered as one.
+        try:
+            contained(req.dest_dir, get_settings().music_root)
+        except PathEscape as exc:
+            raise HTTPException(400, f"destination is outside the library: {exc}") from None
+        if not Path(req.dest_dir).parent.exists():
+            raise HTTPException(400, f"destination parent does not exist: {req.dest_dir}")
+    # After the request itself is known to be well formed: a malformed request
+    # gets the same answer whether or not the runner happens to have ffmpeg.
     if not ffmpeg_available():
         raise HTTPException(503, "ffmpeg is not available inside the container")
-    if req.dest_dir and not Path(req.dest_dir).parent.exists():
-        raise HTTPException(400, f"destination parent does not exist: {req.dest_dir}")
 
     params = req.model_dump(exclude={"dry_run"})
     job_id = await runner.submit("convert", params, dry_run=req.dry_run)

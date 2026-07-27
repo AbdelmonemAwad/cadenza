@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
+from app.core.paths import PathEscape, contained
 from app.db.models import AuditLog, QuarantineItem, Track, TrackStatus
 
 log = logging.getLogger(__name__)
@@ -70,18 +71,34 @@ class QuarantineManager:
         return item
 
     def _dest_for(self, src: Path) -> Path:
-        """Mirror the original tree inside quarantine so restores are obvious."""
+        """Mirror the original tree inside quarantine so restores are obvious.
+
+        The relative path is computed from RESOLVED paths. `Path.relative_to`
+        is purely lexical: given a source containing `..` it returned a
+        relative path that climbed back out, so the ValueError fallback never
+        fired and the destination landed outside the quarantine root.
+        """
+        resolved = src.resolve(strict=False)
+        music_root = Path(self.s.music_root).resolve(strict=False)
         try:
-            rel = src.relative_to(self.s.music_root)
+            rel = resolved.relative_to(music_root)
         except ValueError:
-            rel = Path(src.name)
+            rel = Path(resolved.name)
+
         stamp = datetime.now(UTC).strftime("%Y%m%d")
         dest = self.root / stamp / rel
         counter = 1
         while dest.exists():
             dest = dest.with_name(f"{dest.stem}__{counter}{dest.suffix}")
             counter += 1
-        return dest
+
+        # Belt and braces: whatever the input, the result must land inside the
+        # quarantine root or nothing is moved at all.
+        try:
+            return contained(dest, self.root)
+        except PathEscape as exc:
+            raise QuarantineError(
+                f"refusing to quarantine outside {self.root}: {exc}") from exc
 
     # ---------------- Restore ----------------
 

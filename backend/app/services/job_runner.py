@@ -14,6 +14,7 @@ from sqlalchemy import select
 from app.config import get_settings
 from app.core.dedup import DeduplicationEngine, build_dry_run_report
 from app.core.organizer import Organizer
+from app.core.paths import contained
 from app.core.quarantine import QuarantineManager
 from app.core.scanner import LibraryScanner
 from app.core.transcode import LEGACY_CODECS, PRESETS, Transcoder
@@ -200,7 +201,11 @@ def _trim(d: dict, limit: int = 4000) -> dict:
 # ------------------------------- Handlers -------------------------------
 
 async def handle_scan(job_id: int, params: dict, dry_run: bool, runner: JobRunner) -> dict:
-    root = Path(params.get("path") or runner.settings.music_root)
+    # A caller-supplied scan root must stay inside the library. Unconstrained,
+    # it indexed any readable directory on the NAS into the database, whose
+    # absolute paths were then readable back through /library/tracks.
+    root = contained(params.get("path") or runner.settings.music_root,
+                     runner.settings.music_root)
 
     async def progress(done: int, total: int, current: str) -> None:
         await runner.progress(job_id, done, total, current)
@@ -222,9 +227,11 @@ async def handle_dedup_analyze(job_id: int, params: dict, dry_run: bool,
         # The engine's hot loop runs in a worker thread, so hop back to the loop.
         asyncio.run_coroutine_threadsafe(runner.progress(job_id, done, total, stage), loop)
 
+    scope = (str(contained(params["path"], get_settings().music_root))
+             if params.get("path") else None)
     async with session_scope() as s:
         report = await DeduplicationEngine(s, progress).analyze(
-            scope_prefix=params.get("path"),
+            scope_prefix=scope,
             use_acoustic=params.get("acoustic"),
         )
         summary = await build_dry_run_report(s, limit=params.get("limit", 500))
@@ -343,7 +350,8 @@ async def handle_organize(job_id: int, params: dict, dry_run: bool,
         if params.get("track_ids"):
             stmt = stmt.where(Track.id.in_(params["track_ids"]))
         if params.get("path"):
-            stmt = stmt.where(Track.path.startswith(params["path"]))
+            scope = contained(params["path"], get_settings().music_root)
+            stmt = stmt.where(Track.path.startswith(str(scope)))
         tracks = list((await s.execute(stmt)).scalars().all())
 
         organizer = Organizer(s)
@@ -367,7 +375,10 @@ async def handle_convert(job_id: int, params: dict, dry_run: bool,
         raise ValueError(f"unknown preset '{preset}'; available: {sorted(PRESETS)}")
 
     keep_original = bool(params.get("keep_original", True))
-    dest_dir = Path(params["dest_dir"]) if params.get("dest_dir") else None
+    # ffmpeg writes here and creates directories on the way, so an
+    # unconstrained value let a caller write anywhere the container could reach.
+    dest_dir = (contained(params["dest_dir"], get_settings().music_root)
+                if params.get("dest_dir") else None)
     transcoder = Transcoder()
 
     async with session_scope() as s:

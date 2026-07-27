@@ -4,10 +4,16 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Body, HTTPException
+from fastapi import APIRouter, Body, HTTPException, status
 from pydantic import BaseModel
 
 from app.config import APP_NAME, APP_VERSION, get_settings, save_settings
+from app.core.settings_policy import (
+    LOCKED_FIELDS,
+    WRITABLE_FIELDS,
+    SettingRejected,
+    validate_patch,
+)
 from app.core.transcode import ffmpeg_available
 
 router = APIRouter()
@@ -35,14 +41,33 @@ async def read() -> dict:
     return data
 
 
+@router.get("/writable")
+async def writable_fields() -> dict:
+    """Which settings the API will accept, so the UI need not guess."""
+    return {
+        "writable": sorted(WRITABLE_FIELDS),
+        "locked": sorted(LOCKED_FIELDS),
+        "note": "Locked settings are deployment configuration: set them in the "
+                "compose file or the environment, not over the network.",
+    }
+
+
 @router.patch("")
 async def update(patch: SettingsPatch = Body(...)) -> dict:
-    data = patch.model_dump()
-    unknown = set(data) - set(get_settings().model_fields)
-    if unknown:
-        raise HTTPException(400, f"unknown settings fields: {sorted(unknown)}")
-    s = save_settings(data)
-    return {"updated": sorted(data), "dry_run_default": s.dry_run_default}
+    """Apply a settings patch.
+
+    Values are validated, not just field names. Accepting any known field
+    unchecked made this endpoint an arbitrary-write primitive: it could
+    repoint the binaries the app executes, turn the artwork endpoint into an
+    arbitrary file read, or set a quarantine retention of zero. See issue #6.
+    """
+    try:
+        cleaned = validate_patch(patch.model_dump())
+    except SettingRejected as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+
+    s = save_settings(cleaned)
+    return {"updated": sorted(cleaned), "dry_run_default": s.dry_run_default}
 
 
 @router.get("/health")
