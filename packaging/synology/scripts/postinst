@@ -85,6 +85,75 @@ log_line() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') $*" >> "${VAR_DIR}/logs/package.log" 2>/dev/null || true
 }
 
+# Write the chosen port into the two files DSM reads, and tell the user about
+# the one place it cannot be changed.
+apply_port() {
+    _port="$1"
+    _ui="${PKG_DIR}/target/ui/config"
+    _sc="${PKG_DIR}/target/conf/cadenza.sc"
+
+    # The desktop shortcut. It is a type:"url" entry, so DSM renders whatever
+    # port this file names -- there is no key that makes it follow the service
+    # on its own. allowAltPort was tried here and removed: it enrols a
+    # type:"app" entry in DSM's Application Portal reverse proxy, a different
+    # mechanism entirely, and beside a hardcoded port it did nothing.
+    #
+    # The file is WRITTEN, not patched. Rewriting JSON with sed produced a
+    # literal 0x01 where the backreference should have been -- BusyBox, GNU and
+    # MSYS seds do not agree on backreferences in a replacement -- and left DSM
+    # with a config it could not parse. Emitting the document has no dialect to
+    # get wrong.
+    if [ -d "${PKG_DIR}/target/ui" ]; then
+        cat > "${_ui}.new" <<UICFG
+{
+    ".url": {
+        "SYNO.SDS._ThirdParty.App.Cadenza": {
+            "type": "url",
+            "allUsers": true,
+            "title": "Cadenza",
+            "desc": "Curate and deduplicate your music library",
+            "icon": "images/cadenza_{0}.png",
+            "protocol": "http",
+            "port": "${_port}",
+            "url": "/",
+            "urlTarget": "_syno_Cadenza",
+            "allowMultiInstance": false,
+            "grantPrivilege": "local"
+        }
+    }
+}
+UICFG
+        if mv "${_ui}.new" "${_ui}" 2>/dev/null; then
+            log_line "Desktop icon set to port ${_port}."
+        else
+            rm -f "${_ui}.new" 2>/dev/null || true
+            log_line "WARNING: could not set the desktop icon port; it still says 8760."
+        fi
+    fi
+
+    # The firewall service definition. port-config is acquired BEFORE postinst
+    # runs and the copy is skipped when the destination already exists, so
+    # editing the payload copy is not enough on its own -- synopkghelper has to
+    # be asked to update the resource.
+    if [ -f "${_sc}" ]; then
+        sed "s|^dst\.ports=.*|dst.ports=\"${_port}/tcp\"|" "${_sc}" > "${_sc}.new" 2>/dev/null             && mv "${_sc}.new" "${_sc}" 2>/dev/null || rm -f "${_sc}.new" 2>/dev/null || true
+    fi
+    if [ -x /usr/syno/sbin/synopkghelper ]; then
+        /usr/syno/sbin/synopkghelper update "${SYNOPKG_PKGNAME:-Cadenza}" port-config >/dev/null 2>&1             && log_line "Firewall service definition updated to ${_port}/tcp."             || log_line "NOTE: if DSM's firewall is on, allow ${_port}/tcp under Control Panel -> Security -> Firewall."
+    else
+        log_line "NOTE: if DSM's firewall is on, allow ${_port}/tcp under Control Panel -> Security -> Firewall."
+    fi
+
+    # INFO's adminport is fixed when the .spk is built and no install-time
+    # script can change it, so Package Center's own "Open" link keeps naming
+    # the default. Said plainly rather than left to be discovered.
+    if [ "${_port}" != "8760" ]; then
+        log_line "Package Center's Open button still uses 8760 (it is baked into"
+        log_line "the package at build time). Use the desktop icon, or browse to"
+        log_line "http://<nas>:${_port} directly."
+    fi
+}
+
 # ---------------------------------------------------------------------------
 # Work out the uid:gid the container should run as.
 #
@@ -159,36 +228,18 @@ EOF
 chmod 640 "${ENV_FILE}" 2>/dev/null || true
 
 # ---------------------------------------------------------------------------
-# Make the DSM-side port entries agree with the chosen port.
+# Persist the port, then apply it everywhere DSM actually reads one.
 #
-# The desktop icon follows it on its own: ui/config declares allowAltPort, so
-# DSM rewrites the portal URL when the package reports a different port. The
-# firewall service definition does not -- conf/cadenza.sc is read at install
-# time with whatever port it was built with. It is rewritten here when the
-# installed copy is reachable and writable, and the user is told to open the
-# port by hand when it is not, rather than being left to discover a blocked
-# port with no explanation.
+# etc/ is authoritative because it is the only directory that survives an
+# upgrade; target/ is removed and recreated, and wizard variables are not
+# available on upgrade at all without an upgrade_uifile. postupgrade re-applies
+# from here, so the chosen port is not silently reset to 8760 by an update.
 # ---------------------------------------------------------------------------
-if [ "${HTTP_PORT}" != "8760" ]; then
-    sc_updated="no"
-    for sc in "/usr/local/etc/services.d/cadenza.sc"               "/var/packages/${SYNOPKG_PKGNAME:-Cadenza}/conf/cadenza.sc"; do
-        [ -w "${sc}" ] || continue
-        # Rewrite in place via a temp file: a half-written .sc would leave DSM
-        # with an unparseable service definition.
-        if sed "s|^dst\.ports=.*|dst.ports=\"${HTTP_PORT}/tcp\"|" "${sc}" > "${sc}.new" 2>/dev/null            && mv "${sc}.new" "${sc}" 2>/dev/null; then
-            sc_updated="yes"
-        else
-            rm -f "${sc}.new" 2>/dev/null || true
-        fi
-    done
-    if [ "${sc_updated}" = "yes" ]; then
-        log_line "Firewall service definition updated to ${HTTP_PORT}/tcp."
-    else
-        log_line "NOTE: the firewall entry still names 8760/tcp and could not be"
-        log_line "updated from here. If DSM's firewall is enabled, allow"
-        log_line "${HTTP_PORT}/tcp under Control Panel -> Security -> Firewall."
-    fi
-fi
+printf 'CADENZA_HTTP_PORT=%s
+' "${HTTP_PORT}" > "${ETC_DIR}/port.conf"
+chmod 644 "${ETC_DIR}/port.conf" 2>/dev/null || true
+
+apply_port "${HTTP_PORT}"
 
 # ---------------------------------------------------------------------------
 # The compose file the user points Container Manager at.

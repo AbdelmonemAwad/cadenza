@@ -35,7 +35,19 @@ die()  { printf '\033[1;31m[error]\033[0m %s\n' "$*" >&2; exit 1; }
 # ---- 2) Assemble the package payload -------------------------------------
 info "assembling package payload ..."
 rm -rf "${BUILD_DIR}"
-mkdir -p "${STAGE}"/{docker,bin,doc} "${SPK_DIR}" "${DIST_DIR}"
+mkdir -p "${STAGE}"/{docker,bin,doc,ui,conf} "${SPK_DIR}" "${DIST_DIR}"
+
+# INFO declares dsmuidir="ui", which DSM resolves against target/ -- that is,
+# against the contents of package.tgz. This directory was only ever copied into
+# the OUTER archive, so /var/packages/Cadenza/target/ui never existed and the
+# desktop icon could not be registered. The .spk verification in CI looked for
+# ui/config in the outer archive and passed, which is why nothing caught it.
+cp -r "${SCRIPT_DIR}/ui/." "${STAGE}/ui/"
+
+# conf/resource points port-config at a protocol-file resolved against target/
+# as well, so the service definition has to travel in the payload for the same
+# reason.
+cp "${SCRIPT_DIR}/conf/cadenza.sc" "${STAGE}/conf/"
 
 # The Container Manager project file, so it is available on the NAS.
 cp "${ROOT_DIR}/docker-compose.yml" "${STAGE}/docker/"
