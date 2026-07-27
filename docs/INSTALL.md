@@ -11,14 +11,6 @@ rather than a preferred path and a fallback:
 
 Both end up serving the same application at `http://<nas-address>:8760`.
 
-> **A note on the older documentation.** The top-level `README.md` still says a
-> `.spk` cannot start the application on DSM 7 and that Container Manager is the
-> only supported path. That was true of an earlier version. The package now runs
-> the application itself (see
-> `packaging/synology/scripts/start-stop-status`), and this document describes
-> the current behaviour. The compose file the installer generates carries the
-> same stale sentence in its header comment; ignore it.
-
 ---
 
 ## 1. System requirements
@@ -568,8 +560,6 @@ Stated plainly so you do not discover them by experiment:
 - **The DSM firewall entry may need to be added by hand.** §7.
 - **Provider API keys are stored in plain text** in `settings.json` in the config
   folder. Protect that folder accordingly.
-- **The generated compose file's header comment is out of date** — it claims the
-  package cannot start the application, which was true of the previous version.
 - **The quarantine path is not exposed in the wizard**; change it in
   `cadenza.env` if you must, keeping it on the library's volume.
 - **One worker, always.** Not a bug — the scheduler and job runner are

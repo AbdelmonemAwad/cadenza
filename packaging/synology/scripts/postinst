@@ -269,9 +269,10 @@ cat > "${COMPOSE_FILE}" <<EOF
 # container cannot write to it -- you will see "/config is not writable" in the
 # project log and the container will restart in a loop.
 #
-# On DSM 7 an unsigned package cannot reach the Docker daemon, which is why the
-# package cannot start the container for you. See
-# https://github.com/AbdelmonemAwad/cadenza/issues/2
+# You do NOT need this file. The package runs Cadenza itself -- start it from
+# Package Center and it is ready. This is here only if you would rather run it
+# as a container instead, in which case stop the package first so the two do
+# not both hold the same port and the same library.
 
 services:
   cadenza:
