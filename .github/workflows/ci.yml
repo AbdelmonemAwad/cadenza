@@ -408,3 +408,92 @@ jobs:
           path: build/cache/sources/*
           retention-days: 90
           if-no-files-found: warn
+
+  # Every version that lands on main becomes a published release, with the .spk
+  # attached. Without this the repository showed v1.0.0 as the newest release
+  # while VERSION said 2.1.0 -- and README tells people to download the .spk
+  # from Releases, so anyone following it got the very first build: the stub
+  # package that installs and starts nothing.
+  release:
+    name: Publish release
+    runs-on: ubuntu-latest
+    needs: [package]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read the version
+        id: v
+        run: echo "version=$(tr -d ' \t\r\n' < VERSION)" >> "$GITHUB_OUTPUT"
+
+      # Idempotent: a push that does not change VERSION must not fail, and must
+      # not replace the artifacts of a release that already exists.
+      - name: Has this version already been released?
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "v${{ steps.v.outputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "v${{ steps.v.outputs.version }} is already released; nothing to do"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download the package
+        if: steps.check.outputs.exists == 'false'
+        uses: actions/download-artifact@v4
+        with:
+          name: cadenza-spk
+          path: dist
+
+      # The LGPL source that must accompany the ffmpeg and fpcalc binaries. It
+      # is attached to the same release as the package it belongs to, because
+      # LGPL 2.1 s.4 does not accept a download link as source delivery.
+      - name: Download the third-party source
+        if: steps.check.outputs.exists == 'false'
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: cadenza-thirdparty-source
+          path: dist/third-party-source
+
+      - name: Publish
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          ls -lh dist/*.spk
+          notes="$(mktemp)"
+          {
+            echo "Standalone Synology package. It carries its own Python, its own"
+            echo "libraries and its own ffmpeg/ffprobe/fpcalc, declares no package"
+            echo "dependencies, and runs as an unprivileged service account."
+            echo
+            echo "**Install:** Package Center -> Manual Install -> select the .spk."
+            echo
+            echo "**One step afterwards:** DSM does not let an unsigned package grant"
+            echo "itself access to a shared folder, so give the \`cadenza\` account"
+            echo "access to your music: Control Panel -> Shared Folder -> Edit ->"
+            echo "Permissions -> switch the dropdown to 'System internal user' ->"
+            echo "tick \`cadenza\` -> Save."
+            echo
+            echo "You choose the username and password the first time you open it;"
+            echo "nothing is generated and there is no default credential."
+            echo
+            echo "\`third-party-source\` contains the corresponding source for the"
+            echo "bundled LGPL binaries."
+            echo
+            echo "Full history: [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/main/CHANGELOG.md)"
+          } > "$notes"
+
+          gh release create "v${VERSION}" \
+            --title "Cadenza ${VERSION}" \
+            --notes-file "$notes" \
+            dist/*.spk \
+            $(ls dist/third-party-source/* 2>/dev/null || true)
+          echo "published v${VERSION}"
