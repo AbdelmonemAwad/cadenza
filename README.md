@@ -62,20 +62,41 @@ ARM-based models (DS220j, DS223, …) are not supported: the image is built for
 
 ## Install
 
-Download the latest `.spk` from
-[Releases](https://github.com/AbdelmonemAwad/cadenza/releases), then in DSM:
+Cadenza runs as a container, through **Container Manager**.
 
-**Package Center → Manual Install → select the file**
+> **Not via Package Center.** DSM 7 does not allow an unsigned third-party
+> package to run as root, and reaching the Docker daemon requires exactly that.
+> A `.spk` therefore cannot start this application on DSM 7 — see
+> [#2](https://github.com/AbdelmonemAwad/cadenza/issues/2). Container Manager is
+> the supported path and needs no elevated privileges.
 
-Every push to `main` also builds and verifies a `.spk`, so an installable
-package for any commit can be downloaded from that run's
-[Actions](https://github.com/AbdelmonemAwad/cadenza/actions) page under
-**Artifacts → cadenza-spk**. No local build environment is needed.
+**1.** Install **Container Manager** from Package Center if it is not already there.
 
-The installer asks for your music folder path, a web port, a timezone, and a
-default language. It never modifies files during installation.
+**2.** Download [`docker-compose.yml`](docker-compose.yml) and edit three things:
 
-Open Cadenza from the DSM desktop, or go to `http://<nas-address>:8760`.
+| Line | Change it to |
+|---|---|
+| `/volume1/music` | the real path to your music share |
+| `/volume1/docker/cadenza/config` | where the database and settings should live |
+| `user: "1026:100"` | the UID:GID that owns your music — find it with `id <your-dsm-user>` over SSH |
+
+**3.** Container Manager → **Project** → **Create** → point it at that file → **Start**.
+
+**4.** Open `http://<nas-address>:8760`.
+
+Getting `user:` wrong is the most common mistake: files Cadenza writes end up
+owned by the wrong account. Check it rather than guessing.
+
+### Try it read-only first
+
+Duplicate analysis and scanning never write to your library. To prove that to
+yourself before granting write access, mount the library read-only:
+
+```yaml
+- /volume1/music:/music:ro
+```
+
+Scan, review the duplicate report, then switch to `:rw` when you are satisfied.
 
 ### First run
 
@@ -89,17 +110,34 @@ Open Cadenza from the DSM desktop, or go to `http://<nas-address>:8760`.
 3. **Duplicates → Analyse.** Review the report. Nothing has moved yet.
 4. When the proposed decisions look right, **Move duplicates to quarantine**.
 
+## Security
+
+Read this before exposing Cadenza beyond your own LAN.
+
+**There is no login.** The API has no authentication yet, so anyone who can
+reach port 8760 can browse your library and start jobs that move files. Keep it
+on a trusted network, do not port-forward it, and put it behind DSM's reverse
+proxy with authentication if you need remote access. Tracked as a blocker for
+1.1.
+
+**API keys are stored in plain text** in `config/settings.json`, and the Apple
+Music user token in `config/apple_user_token.json`. Protect the config volume
+accordingly.
+
+The container runs as a normal user, never root, with `no-new-privileges`.
+
 ## Build from source
 
 ```bash
 git clone https://github.com/AbdelmonemAwad/cadenza.git
 cd cadenza
-make build          # builds the Docker image, then dist/Cadenza-x86_64-1.0.0-0001.spk
+docker build -f docker/Dockerfile -t cadenza .   # the application image
+make spk                                          # optional DSM package
 ```
 
-Building the `.spk` locally needs Linux, WSL2 or macOS (it uses `tar` and
-`md5sum`), or you can run it on the NAS itself over SSH. On Windows, prefer the
-CI artifact described above rather than setting up a build environment.
+The `.spk` build needs only `bash`, `tar` and `md5sum` — no Docker — and
+produces a small package containing the compose file, the `cadenza` CLI and the
+docs. It does not start the application; see the note under *Install*.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup, which needs
 neither Docker nor a NAS.

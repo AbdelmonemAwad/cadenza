@@ -1,31 +1,8 @@
 #!/bin/sh
-# Post-uninstall cleanup.
+# Post-uninstall.
+#
 # Firm rule: music files and the quarantine folder are never touched. The
-# user's data outlives the package.
-set -u
-
-PKG_NAME="Cadenza"
-PKG_DIR="/var/packages/${PKG_NAME}"
-IMAGE="cadenza/cadenza:1.0.0"
-
-DOCKER=""
-for candidate in /usr/local/bin/docker /usr/bin/docker \
-                 /var/packages/ContainerManager/target/usr/bin/docker \
-                 /var/packages/Docker/target/usr/bin/docker; do
-    [ -x "${candidate}" ] && DOCKER="${candidate}" && break
-done
-
-# Removing the image reclaims ~1.2 GB. Ignore failures (it may still be in use).
-[ -n "${DOCKER}" ] && "${DOCKER}" rmi "${IMAGE}" >/dev/null 2>&1 || true
-
-# Back up the database and settings rather than discarding them: a reinstall
-# can pick up right where the user left off.
-if [ -d "${PKG_DIR}/var/config" ]; then
-    BACKUP="/volume1/cadenza-backup-$(date +%Y%m%d%H%M%S)"
-    if mkdir -p "${BACKUP}" 2>/dev/null \
-        && cp -a "${PKG_DIR}/var/config/." "${BACKUP}/" 2>/dev/null; then
-        echo "Settings and database were saved to: ${BACKUP}"
-    fi
-fi
-
+# user's data outlives the package. DSM removes /var/packages/Cadenza itself,
+# and the application database lives under the Container Manager project's
+# config volume, which is not ours to delete.
 exit 0

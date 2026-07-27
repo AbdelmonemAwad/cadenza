@@ -1,10 +1,14 @@
 #!/bin/sh
-# Post-install setup: directories, environment file, and the bundled image.
+# Post-install setup.
+#
+# Runs as the unprivileged package user (sc-cadenza), never root: DSM 7 refuses
+# to install a third-party package that asks for root. That means this script
+# may only write inside the package's own directories -- no chown, no touching
+# the user's shared folders, no docker.
 set -u
 
 PKG_NAME="Cadenza"
 PKG_DIR="/var/packages/${PKG_NAME}"
-TARGET_DIR="${PKG_DIR}/target"
 VAR_DIR="${PKG_DIR}/var"
 ETC_DIR="${PKG_DIR}/etc"
 ENV_FILE="${ETC_DIR}/cadenza.env"
@@ -13,68 +17,25 @@ ENV_FILE="${ETC_DIR}/cadenza.env"
 MUSIC_PATH="${wizard_music_path:-/volume1/music}"
 HTTP_PORT="${wizard_http_port:-8760}"
 TIMEZONE="${wizard_timezone:-UTC}"
-RUN_USER="${wizard_run_user:-}"
 LOCALE="${wizard_locale:-en}"
 
 mkdir -p "${VAR_DIR}/config" "${VAR_DIR}/logs" "${ETC_DIR}"
 
-# Keep quarantine on the same volume as the library so moves are instant
-# renames rather than full copies.
-QUARANTINE_PATH="${MUSIC_PATH}/.cadenza-quarantine"
-mkdir -p "${QUARANTINE_PATH}"
-
-# Decide which UID/GID the container runs as. Never root: it writes into the
-# user's own share, and the files must stay owned by them.
-if [ -n "${RUN_USER}" ] && id "${RUN_USER}" >/dev/null 2>&1; then
-    CADENZA_UID="$(id -u "${RUN_USER}")"
-    CADENZA_GID="$(id -g "${RUN_USER}")"
-else
-    CADENZA_UID="$(stat -c '%u' "${MUSIC_PATH}" 2>/dev/null || echo 1029)"
-    CADENZA_GID="$(stat -c '%g' "${MUSIC_PATH}" 2>/dev/null || echo 100)"
-fi
-
 cat > "${ENV_FILE}" <<EOF
 # Generated at install time. Edit and restart the package to apply changes.
 TZ=${TIMEZONE}
-CADENZA_UID=${CADENZA_UID}
-CADENZA_GID=${CADENZA_GID}
 CADENZA_HTTP_PORT=${HTTP_PORT}
 CADENZA_LOG_LEVEL=INFO
 CADENZA_WORKERS=4
 CADENZA_DEFAULT_LOCALE=${LOCALE}
 HOST_MUSIC_PATH=${MUSIC_PATH}
-HOST_QUARANTINE_PATH=${QUARANTINE_PATH}
+HOST_QUARANTINE_PATH=${MUSIC_PATH}/.cadenza-quarantine
 HOST_CONFIG_PATH=${VAR_DIR}/config
 
-# Provider credentials. Prefer entering these in the app's Settings page.
-ACOUSTID_API_KEY=
-DISCOGS_TOKEN=
-LASTFM_API_KEY=
-MUSICBRAINZ_CONTACT=admin@example.com
-APPLE_TEAM_ID=
-APPLE_KEY_ID=
-APPLE_STOREFRONT=us
+# Provider credentials belong in the app's Settings page, not here. Anything
+# written to this file is readable by the package user and appears in plain
+# text on disk.
 EOF
-chmod 640 "${ENV_FILE}"
-
-chown -R "${CADENZA_UID}:${CADENZA_GID}" \
-    "${VAR_DIR}/config" "${VAR_DIR}/logs" "${QUARANTINE_PATH}" 2>/dev/null || true
-
-# Load the bundled image now so the first start is fast.
-DOCKER=""
-for candidate in /usr/local/bin/docker /usr/bin/docker \
-                 /var/packages/ContainerManager/target/usr/bin/docker \
-                 /var/packages/Docker/target/usr/bin/docker; do
-    [ -x "${candidate}" ] && DOCKER="${candidate}" && break
-done
-
-if [ -n "${DOCKER}" ] && [ -f "${TARGET_DIR}/image/cadenza-image.tar" ]; then
-    "${DOCKER}" load -i "${TARGET_DIR}/image/cadenza-image.tar" \
-        >> "${VAR_DIR}/logs/install.log" 2>&1 \
-        || echo "WARNING: image load failed; it will be retried on first start" \
-             >> "${VAR_DIR}/logs/install.log"
-fi
-
-chmod +x "${TARGET_DIR}/bin/"* 2>/dev/null || true
+chmod 640 "${ENV_FILE}" 2>/dev/null || true
 
 exit 0

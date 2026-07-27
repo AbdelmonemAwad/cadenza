@@ -14,6 +14,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Runs on every push and PR. A leaked credential is unrecoverable once it is
+  # public, so this is enforced mechanically rather than by review.
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # scan full history, not just the tip commit
+
+      - name: Install gitleaks
+        run: |
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz" \
+            | tar -xz gitleaks
+          ./gitleaks version
+
+      - name: Scan working tree
+        run: ./gitleaks detect --source . --no-git --redact --exit-code 1
+
+      - name: Scan commit history
+        run: ./gitleaks detect --source . --redact --exit-code 1
+
   backend:
     name: Backend (Python ${{ matrix.python }})
     runs-on: ubuntu-latest
@@ -139,6 +161,49 @@ jobs:
           echo "container uid: $uid"
           test "$uid" = "1029"
 
+  # Container Manager pulls the image from here. Without a published image the
+  # compose file references a tag that exists only on the build machine, so a
+  # Container Manager project would fail to start. See issue #2.
+  publish:
+    name: Publish image to GHCR
+    runs-on: ubuntu-latest
+    needs: [secrets, docker]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/cadenza
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short
+            type=ref,event=tag
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
   package:
     name: Synology .spk
     runs-on: ubuntu-latest
@@ -159,20 +224,9 @@ jobs:
       - name: Install packaging prerequisites
         run: python -m pip install --upgrade pip pillow
 
-      - name: Build image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/Dockerfile
-          platforms: linux/amd64
-          push: false
-          load: true
-          tags: cadenza/cadenza:1.0.0
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
+      # No image build here any more: the package does not embed one.
       - name: Build .spk
-        run: SKIP_IMAGE=1 bash packaging/synology/build-spk.sh
+        run: bash packaging/synology/build-spk.sh
 
       # A .spk DSM cannot open is worse than no .spk, so check the archive
       # layout and the checksum the installer verifies.

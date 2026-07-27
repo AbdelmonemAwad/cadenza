@@ -1,0 +1,71 @@
+# Cadenza — Container Manager project file for Synology DSM 7.2+
+#
+# This is the supported way to run Cadenza. Paste this file into
+# Container Manager -> Project -> Create, or drop it in a folder on the NAS
+# and point a project at it.
+#
+# BEFORE YOU START, change two things below:
+#   1. the three host paths under `volumes:` so they match your NAS
+#   2. `user:` so it matches the account that owns your music folder
+#      (find it over SSH with:  id your-dsm-username)
+#
+# Files written by Cadenza will be owned by that user. Do not run it as root.
+
+services:
+  cadenza:
+    image: ghcr.io/abdelmonemawad/cadenza:latest
+    container_name: cadenza
+    restart: unless-stopped
+    init: true
+
+    # UID:GID that owns your music share. 1026:100 is a common first DSM user;
+    # yours may differ. Getting this wrong means new files land with the wrong
+    # owner, so check it rather than guessing.
+    user: "1026:100"
+
+    environment:
+      TZ: Africa/Cairo
+      CADENZA_DEFAULT_LOCALE: ar        # "en" for an English interface
+      CADENZA_LOG_LEVEL: INFO
+      CADENZA_WORKERS: "4"
+
+    volumes:
+      # Your music library. Use :ro first if you want to look before it touches
+      # anything -- scanning and duplicate analysis work read-only.
+      - /volume1/music:/music:rw
+      # Quarantine. Keep it on the SAME volume as the library, otherwise every
+      # "delete" becomes a full file copy instead of an instant rename.
+      - /volume1/music/.cadenza-quarantine:/quarantine:rw
+      # Database, logs, artwork cache, and your API keys. Back this up.
+      - /volume1/docker/cadenza/config:/config:rw
+
+    ports:
+      # Reachable at http://<nas-ip>:8760
+      # There is no login on this port yet -- see the security notes in the
+      # README before exposing it beyond your LAN.
+      - "8760:8760"
+
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 3G
+        reservations:
+          memory: 512M
+
+    security_opt:
+      - no-new-privileges:true
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8760/health',timeout=4).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s

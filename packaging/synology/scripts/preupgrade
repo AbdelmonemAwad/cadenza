@@ -1,23 +1,17 @@
 #!/bin/sh
-# Preserve state across an upgrade.
+# Preserve the generated environment file across an upgrade.
+#
+# Staging deliberately happens inside the package directory rather than /tmp:
+# a fixed, predictable /tmp path is world-writable and lets a local user
+# pre-create it as a symlink, redirecting whatever we copy.
 set -u
 
 PKG_NAME="Cadenza"
 PKG_DIR="/var/packages/${PKG_NAME}"
-STAGE="/tmp/cadenza-upgrade-stage"
-CONTAINER="cadenza"
-
-DOCKER=""
-for candidate in /usr/local/bin/docker /usr/bin/docker \
-                 /var/packages/ContainerManager/target/usr/bin/docker \
-                 /var/packages/Docker/target/usr/bin/docker; do
-    [ -x "${candidate}" ] && DOCKER="${candidate}" && break
-done
-[ -n "${DOCKER}" ] && "${DOCKER}" rm -f "${CONTAINER}" >/dev/null 2>&1 || true
+STAGE="${PKG_DIR}/var/upgrade-stage"
 
 rm -rf "${STAGE}"
-mkdir -p "${STAGE}"
+mkdir -p "${STAGE}" || exit 0
 [ -f "${PKG_DIR}/etc/cadenza.env" ] && cp -a "${PKG_DIR}/etc/cadenza.env" "${STAGE}/"
-[ -d "${PKG_DIR}/var/config" ] && cp -a "${PKG_DIR}/var/config" "${STAGE}/"
 
 exit 0

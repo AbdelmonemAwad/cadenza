@@ -1,141 +1,58 @@
 #!/bin/sh
 # =============================================================================
-#  Cadenza - container lifecycle controller for DSM 7
+#  Cadenza - DSM package control script
+#
+#  This package does NOT currently run the application. Cadenza ships as a
+#  container, and on DSM 7 an unsigned third-party package cannot reach the
+#  Docker daemon:
+#
+#    * DSM 7 refuses to install a package that requests root privileges.
+#    * /var/run/docker.sock is root:root 0660 and there is no docker group for
+#      the package user to join.
+#
+#  Driving Docker from here is therefore impossible without either a Synology
+#  signing key or a change that would hand root-equivalent access to the
+#  package user. Use Container Manager instead -- see the README.
+#
+#  Tracked in https://github.com/AbdelmonemAwad/cadenza/issues/2, which also
+#  covers reworking this into a native package with no Docker dependency.
 # =============================================================================
 set -u
 
 PKG_NAME="Cadenza"
 PKG_DIR="/var/packages/${PKG_NAME}"
-TARGET_DIR="${PKG_DIR}/target"
-VAR_DIR="${PKG_DIR}/var"
-ETC_DIR="${PKG_DIR}/etc"
+LOG_FILE="${PKG_DIR}/var/logs/package.log"
 
-CONTAINER="cadenza"
-IMAGE="cadenza/cadenza:1.0.0"
-COMPOSE_FILE="${TARGET_DIR}/docker/docker-compose.yml"
-ENV_FILE="${ETC_DIR}/cadenza.env"
-PID_FILE="${VAR_DIR}/cadenza.pid"
-LOG_FILE="${VAR_DIR}/logs/package.log"
+mkdir -p "${PKG_DIR}/var/logs" 2>/dev/null || true
 
-mkdir -p "${VAR_DIR}/logs"
+log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $*" >> "${LOG_FILE}" 2>/dev/null || true; }
 
-log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $*" >> "${LOG_FILE}"; }
-
-# The docker binary sits in different places on DSM 7.0/7.1 (Docker) versus
-# 7.2+ (Container Manager), so probe all of them.
-find_docker() {
-    for candidate in /usr/local/bin/docker /usr/bin/docker \
-                     /var/packages/ContainerManager/target/usr/bin/docker \
-                     /var/packages/Docker/target/usr/bin/docker; do
-        [ -x "${candidate}" ] && { echo "${candidate}"; return 0; }
-    done
-    return 1
+explain() {
+    log "Cadenza cannot be started from Package Center."
+    log "On DSM 7 a third-party package runs as an unprivileged user and cannot"
+    log "reach the Docker daemon, so this package cannot launch the container."
+    log ""
+    log "Run it through Container Manager instead:"
+    log "  1. Container Manager -> Project -> Create"
+    log "  2. Use the docker-compose.yml from the project repository"
+    log "  3. Adjust the volume paths and the user: line, then start the project"
+    log ""
+    log "See https://github.com/AbdelmonemAwad/cadenza#install"
 }
 
-DOCKER="$(find_docker || true)"
-if [ -z "${DOCKER}" ]; then
-    log "ERROR: docker binary not found - is Container Manager installed and running?"
-    echo "Container Manager (Docker) is not installed or not running" >&2
-    exit 1
-fi
-
-compose() {
-    if "${DOCKER}" compose version >/dev/null 2>&1; then
-        "${DOCKER}" compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" "$@"
-    elif command -v docker-compose >/dev/null 2>&1; then
-        docker-compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" "$@"
-    else
-        return 127
-    fi
-}
-
-load_image_if_needed() {
-    "${DOCKER}" image inspect "${IMAGE}" >/dev/null 2>&1 && return 0
-    if [ -f "${TARGET_DIR}/image/cadenza-image.tar" ]; then
-        log "loading bundled docker image"
-        "${DOCKER}" load -i "${TARGET_DIR}/image/cadenza-image.tar" >> "${LOG_FILE}" 2>&1
-    else
-        log "ERROR: bundled docker image is missing from the package"
-        return 1
-    fi
-}
-
-start_daemon() {
-    load_image_if_needed || return 1
-
-    # Clear out a stopped container left behind by a previous run.
-    "${DOCKER}" rm -f "${CONTAINER}" >/dev/null 2>&1 || true
-
-    if compose up -d >> "${LOG_FILE}" 2>&1; then
-        log "started via docker compose"
-    else
-        log "compose unavailable, falling back to docker run"
-        # shellcheck disable=SC1090
-        [ -f "${ENV_FILE}" ] && . "${ENV_FILE}"
-        "${DOCKER}" run -d \
-            --name "${CONTAINER}" \
-            --restart unless-stopped \
-            --user "${CADENZA_UID:-1029}:${CADENZA_GID:-100}" \
-            -p "${CADENZA_HTTP_PORT:-8760}:8760" \
-            -v "${HOST_MUSIC_PATH:-/volume1/music}:/music:rw" \
-            -v "${HOST_QUARANTINE_PATH:-/volume1/music/.cadenza-quarantine}:/quarantine:rw" \
-            -v "${HOST_CONFIG_PATH:-${VAR_DIR}/config}:/config:rw" \
-            -e "TZ=${TZ:-UTC}" \
-            -e "CADENZA_LOG_LEVEL=${CADENZA_LOG_LEVEL:-INFO}" \
-            --security-opt no-new-privileges:true \
-            --log-opt max-size=10m --log-opt max-file=3 \
-            "${IMAGE}" >> "${LOG_FILE}" 2>&1 || return 1
-    fi
-
-    "${DOCKER}" inspect -f '{{.State.Pid}}' "${CONTAINER}" > "${PID_FILE}" 2>/dev/null || true
-    return 0
-}
-
-stop_daemon() {
-    log "stopping container"
-    compose down --timeout 30 >> "${LOG_FILE}" 2>&1 \
-        || "${DOCKER}" stop -t 30 "${CONTAINER}" >> "${LOG_FILE}" 2>&1 || true
-    "${DOCKER}" rm -f "${CONTAINER}" >/dev/null 2>&1 || true
-    rm -f "${PID_FILE}"
-    return 0
-}
-
-daemon_running() {
-    [ "$("${DOCKER}" inspect -f '{{.State.Running}}' "${CONTAINER}" 2>/dev/null)" = "true" ]
-}
-
-case "$1" in
+case "${1:-}" in
     start)
-        if daemon_running; then
-            log "already running"
-            exit 0
-        fi
-        start_daemon || exit 1
-        # Wait for the container to actually come up, otherwise DSM reports the
-        # package as running before the service can answer.
-        i=0
-        while [ $i -lt 30 ]; do
-            daemon_running && break
-            sleep 1
-            i=$((i + 1))
-        done
-        daemon_running || { log "container failed to start"; exit 1; }
-        log "started"
-        exit 0
+        explain
+        echo "Cadenza must be run through Container Manager. See ${LOG_FILE}." >&2
+        exit 1
         ;;
     stop)
-        stop_daemon
         exit 0
         ;;
     status)
-        if daemon_running; then
-            exit 0      # 0 = running
-        else
-            exit 3      # 3 = stopped, which is what DSM expects
-        fi
+        exit 3      # 3 = stopped, which is what DSM expects
         ;;
     killall)
-        stop_daemon
         exit 0
         ;;
     log)
