@@ -13,8 +13,8 @@
                         "validator": {
                             "allowBlank": false,
                             "regex": {
-                                "expr": "/^\\/volume[0-9]+\\/[^\\s]+$/",
-                                "errorText": "Must start with /volume1/ — for example /volume1/music"
+                                "expr": "/^\\/volume[0-9]+\\/[^\\s:\"'`$\\\\]+$/",
+                                "errorText": "Must start with /volume1/ and contain no spaces, colons or quotes — for example /volume1/music"
                             }
                         }
                     }

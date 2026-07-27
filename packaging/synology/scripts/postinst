@@ -25,6 +25,43 @@ TIMEZONE="${wizard_timezone:-UTC}"
 LOCALE="${wizard_locale:-en}"
 RUN_USER="${wizard_run_user:-}"
 
+# The wizard validates these in the DSM UI, but that validation is client side
+# and a command-line install sets the variables directly. Everything below is
+# interpolated into a YAML document and a shell heredoc, so it is re-checked
+# here rather than trusted.
+#
+# A colon is the one that bites quietly: docker-compose splits a short-form
+# volume on colons, so /volume1/my:music produces a mount of /volume1/my at
+# "music" instead of an error anyone would notice.
+case "${MUSIC_PATH}" in
+    /volume[0-9]*/?*)  : ;;
+    *) echo "cadenza: refusing an unexpected library path: ${MUSIC_PATH}" >&2
+       MUSIC_PATH="/volume1/music" ;;
+esac
+case "${MUSIC_PATH}" in
+    *[:\"\'\`\$\\]*|*" "*|*'	'*)
+       echo "cadenza: library path contains a character that would corrupt the" >&2
+       echo "         generated compose file; falling back to /volume1/music" >&2
+       MUSIC_PATH="/volume1/music" ;;
+esac
+
+# Same reasoning for the rest. A port is digits, a locale is one of two values,
+# and a timezone is a Region/City name -- none of them are free text.
+case "${HTTP_PORT}" in
+    ''|*[!0-9]*) HTTP_PORT="8760" ;;
+esac
+case "${LOCALE}" in
+    en|ar) : ;;
+    *) LOCALE="en" ;;
+esac
+case "${TIMEZONE}" in
+    ''|*[!A-Za-z0-9_/+-]*) TIMEZONE="UTC" ;;
+esac
+# The username is only ever used as an awk field comparison and in a comment.
+case "${RUN_USER}" in
+    *[!A-Za-z0-9._-]*) RUN_USER="" ;;
+esac
+
 mkdir -p "${VAR_DIR}/config" "${VAR_DIR}/logs" "${ETC_DIR}"
 
 # ---------------------------------------------------------------------------
