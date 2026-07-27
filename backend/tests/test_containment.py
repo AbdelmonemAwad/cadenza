@@ -213,11 +213,19 @@ def test_scan_outside_the_library_is_rejected(api):
 
 
 def test_convert_rejects_a_destination_outside_the_library(api):
+    """Refused at the boundary, not after the job is already queued.
+
+    The first version of this test accepted 503 as well, on the grounds that a
+    runner without ffmpeg refuses everything anyway. That hid a real gap: on a
+    runner that does have ffmpeg the request was accepted with a job id and a
+    200, and the escape was only caught later, inside the job. The status code
+    must not depend on whether ffmpeg happens to be installed.
+    """
     response = api.post("/api/v1/convert", json={
         "preset": "flac", "dest_dir": "/etc/cadenza-out", "dry_run": True})
-    # Either refused up front, or refused because ffmpeg is absent in CI --
-    # what must not happen is a queued job that writes to /etc.
-    assert response.status_code in (400, 503)
+    assert response.status_code == 400
+    assert "outside the library" in response.json()["detail"]
+    assert "job_id" not in response.json()
 
 
 def test_writable_endpoint_lists_the_policy(api):
