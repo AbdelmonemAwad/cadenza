@@ -192,10 +192,11 @@ jobs:
           echo "  checksum declared=$declared actual=$actual"
           test "$declared" = "$actual" || { echo "checksum mismatch"; exit 1; }
           grep -q '^arch="x86_64"' /tmp/spk/INFO || { echo "wrong arch"; exit 1; }
-          # The control scripts must be executable and LF-terminated on DSM.
+          # The control scripts must be executable and LF-terminated, or DSM
+          # fails them with an opaque error at install time.
           for s in /tmp/spk/scripts/*; do
-            test -x "$s" || { echo "not executable: $s"; exit 1; }
-            grep -qU $'\r' "$s" && { echo "CRLF in $s"; exit 1; }
+            if [ ! -x "$s" ]; then echo "not executable: $s"; exit 1; fi
+            if grep -qU $'\r' "$s"; then echo "CRLF line endings in: $s"; exit 1; fi
           done
           echo "package structure OK"
 

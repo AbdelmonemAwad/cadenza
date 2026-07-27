@@ -12,7 +12,12 @@ build-backend = "setuptools.build_meta"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# `python -m pytest` puts the working directory on sys.path but the `pytest`
+# entrypoint does not, so without this the suite passes one way and fails with
+# ModuleNotFoundError the other. Making it explicit keeps both identical.
+pythonpath = ["."]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 filterwarnings = ["ignore::DeprecationWarning"]
 addopts = "-q"
 
