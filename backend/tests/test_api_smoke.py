@@ -8,13 +8,27 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
+from app.core.auth import Credentials, hash_password, save_credentials
 from app.main import create_app
 
 
 @pytest.fixture(scope="module")
 def client():
+    """An authenticated client.
+
+    Every /api/v1 route now requires a session, so the smoke tests sign in
+    once. The unauthenticated behaviour is asserted in test_auth.py instead of
+    being re-tested here.
+    """
     with TestClient(create_app()) as c:
+        save_credentials(Credentials(password_hash=hash_password(_PASSWORD),
+                                     must_change=False))
+        response = c.post("/api/v1/auth/login", json={"password": _PASSWORD})
+        assert response.status_code == 200, response.text
         yield c
+
+
+_PASSWORD = "smoke-test-password-value"
 
 
 def test_health(client):
@@ -23,10 +37,15 @@ def test_health(client):
     assert r.json()["app"] == "Cadenza"
 
 
-def test_openapi_schema_builds(client):
-    r = client.get("/api/openapi.json")
-    assert r.status_code == 200
-    assert r.json()["info"]["title"] == "Cadenza"
+def test_openapi_schema_builds():
+    """The schema must still be constructible even though it is not served.
+
+    It is disabled in production because it maps every destructive endpoint
+    (issue #5), so this builds it directly rather than over HTTP.
+    """
+    schema = create_app().openapi()
+    assert schema["info"]["title"] == "Cadenza"
+    assert any(p.startswith("/api/v1/convert") for p in schema["paths"])
 
 
 @pytest.mark.parametrize("path", [

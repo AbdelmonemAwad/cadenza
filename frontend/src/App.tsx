@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
-import { subscribeJobs, type JobEvent } from './api/client'
+import { api, subscribeJobs, UNAUTHORIZED_EVENT, type JobEvent } from './api/client'
 import LanguageSwitcher from './components/LanguageSwitcher'
 import { useI18n, type TranslationKey } from './i18n'
+import Login, { ChangePassword } from './pages/Login'
 import AppleMusic from './pages/AppleMusic'
 import Convert from './pages/Convert'
 import Dashboard from './pages/Dashboard'
@@ -25,9 +26,33 @@ const NAV: { to: string; key: TranslationKey; icon: string }[] = [
   { to: '/settings', key: 'nav.settings', icon: '⚙' },
 ]
 
+type Session = 'checking' | 'anonymous' | 'must-change' | 'ready'
+
 export default function App() {
   const { t } = useI18n()
   const [active, setActive] = useState<JobEvent | null>(null)
+  const [session, setSession] = useState<Session>('checking')
+
+  // A cheap authenticated call decides whether a session cookie is still
+  // valid; /auth/status only reports whether a password exists at all.
+  const probeSession = useCallback(() => {
+    api.get('/settings/health')
+      .then(() => setSession((s) => (s === 'must-change' ? s : 'ready')))
+      .catch((err: Error) => {
+        // 403 means the session is valid but scoped to the password change.
+        // Only a 401 -- or an outright failure to reach the API -- should send
+        // the user back to the sign-in screen.
+        setSession(err.message.startsWith('403') ? 'must-change' : 'anonymous')
+      })
+  }, [])
+
+  useEffect(() => { probeSession() }, [probeSession])
+
+  useEffect(() => {
+    const onUnauthorized = () => setSession('anonymous')
+    window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized)
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized)
+  }, [])
 
   useEffect(() => subscribeJobs((e) => {
     if (e.type === 'job.finished') {
@@ -42,6 +67,13 @@ export default function App() {
   const percent = active?.total
     ? Math.round(((active.processed ?? 0) / active.total) * 100)
     : 0
+
+  const signIn = (mustChangePassword: boolean) =>
+    setSession(mustChangePassword ? 'must-change' : 'ready')
+
+  if (session === 'checking') return <div className="empty">{t('app.loading')}</div>
+  if (session === 'anonymous') return <Login onSignedIn={signIn} />
+  if (session === 'must-change') return <ChangePassword onDone={() => setSession('ready')} />
 
   return (
     <div className="app">
@@ -62,6 +94,21 @@ export default function App() {
         ))}
 
         <div className="sidebar-footer">
+          <button className="btn sm" style={{ width: '100%', marginBottom: 8 }}
+            onClick={async () => {
+              // Only claim to be signed out once the server has actually
+              // cleared the cookie. Returning to the login screen regardless
+              // would leave a valid 14-day session in the browser while
+              // looking like a successful sign-out.
+              try {
+                await api.post('/auth/logout')
+                setSession('anonymous')
+              } catch {
+                alert(t('auth.signOutFailed'))
+              }
+            }}>
+            {t('auth.signOut')}
+          </button>
           <LanguageSwitcher />
         </div>
       </aside>

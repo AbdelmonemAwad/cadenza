@@ -1,11 +1,21 @@
 const BASE = '/api/v1'
 
+/** Fired when the API rejects a request for lack of a session, so the app can
+    drop straight back to the sign-in screen instead of rendering empty pages. */
+export const UNAUTHORIZED_EVENT = 'cadenza:unauthorized'
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
+    credentials: 'same-origin',   // carry the session cookie
     ...init,
   })
   if (!res.ok) {
+    // Do not fire on the auth endpoints themselves: a failed sign-in is a
+    // normal outcome there and would otherwise loop.
+    if (res.status === 401 && !path.startsWith('/auth/')) {
+      window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT))
+    }
     let detail = res.statusText
     try {
       const body = await res.json()

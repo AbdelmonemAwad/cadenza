@@ -390,6 +390,35 @@ const en = {
     job: 'Job #{id}',
     running: 'running',
   },
+
+  auth: {
+    title: 'Sign in to Cadenza',
+    subtitle: 'This instance manages files you cannot re-download.',
+    password: 'Password',
+    signIn: 'Sign in',
+    signOut: 'Sign out',
+    signingIn: 'Signing in…',
+    invalid: 'Incorrect password.',
+    firstRun:
+      'A password was generated when Cadenza first started. Find it in '
+      + 'initial-password.txt inside the config folder, or in the container log.',
+    notInitialised:
+      'Authentication is not ready yet. Wait for the container to finish starting, '
+      + 'then reload.',
+    changeTitle: 'Change your password',
+    changeRequired:
+      'You are signed in with the generated password. Choose your own before continuing.',
+    currentPassword: 'Current password',
+    newPassword: 'New password',
+    confirmPassword: 'Confirm new password',
+    changeSubmit: 'Update password',
+    changed: 'Password updated.',
+    mismatch: 'The two passwords do not match.',
+    tooShort: 'Use at least {min} characters.',
+    sameAsOld: 'The new password must differ from the current one.',
+    sessionExpired: 'Your session expired. Sign in again.',
+    signOutFailed: 'Could not sign out. Check the connection and try again.',
+  },
 } as const
 
 export default en

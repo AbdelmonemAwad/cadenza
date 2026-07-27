@@ -162,6 +162,17 @@ tbody tr:hover { background: var(--surface-2); }
 }
 .job-strip .bar { flex: 1; max-width: 420px; }
 
+/* ── Sign-in screen ── */
+.auth-screen {
+  min-height: 100vh; display: grid; place-items: center;
+  background: var(--bg); padding: 24px;
+}
+.auth-card {
+  width: 100%; max-width: 380px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 26px;
+}
+
 /* ── Language switcher ── */
 .sidebar-footer { margin-block-start: auto; padding-block-start: 16px; }
 .lang-switch {
