@@ -25,10 +25,21 @@ PBS_RELEASE="${PBS_RELEASE:-20241219}"
 PBS_URL="https://github.com/astral-sh/python-build-standalone/releases/download/${PBS_RELEASE}/cpython-${PY_VERSION}+${PBS_RELEASE}-x86_64-unknown-linux-gnu-install_only.tar.gz"
 
 # ffmpeg is the LGPL build, not a GPL one: the GPL variants pull in x264 and
-# friends that Cadenza never uses, and taking a GPL binary would extend that
-# licence over what is distributed. LGPL still carries a source-delivery duty,
-# which is why the build records the exact upstream URL and the release job
-# ships the corresponding source archive next to the package.
+# friends that Cadenza never uses, and a GPL binary would extend that licence
+# over everything distributed with it.
+#
+# It is LGPL *v3*, not v2.1, and the difference is not pedantic. BtbN's lgpl
+# variant configures --enable-version3 because it unconditionally enables the
+# Apache-2.0 OpenCORE-AMR and VMAF libraries, and Apache-2.0 is incompatible
+# with LGPLv2.1. The archive ships COPYING.LGPLv3 as its LICENSE.txt. So the
+# text that must accompany the binaries is LGPLv3, and LGPLv3 reaches GPLv3's
+# patent and installation-information terms -- which matter here, because this
+# is installed on a consumer NAS appliance.
+#
+# An earlier version of this comment claimed "the release job ships the
+# corresponding source archive". No such job existed. The source archives are
+# fetched below and published with the package, so the statement is now backed
+# by something.
 #
 # The SHARED LGPL build, not the static one. Static gives two ~106 MB binaries
 # that duplicate the same libraries: 212 MB where shared costs about half, since
@@ -119,6 +130,50 @@ tar -xzf "${CACHE}/fpcalc.tar.gz" -C "${CACHE}/fpcalc-x" --strip-components=1
 cp "${CACHE}/fpcalc-x/fpcalc" "${STAGE}/bin/"
 chmod 755 "${STAGE}/bin/"*
 
+# ---- 3b) Licence texts for the binaries we redistribute -------------------
+# Without this the .spk shipped LGPL binaries accompanied by nothing but the
+# project's own MIT licence, which is a notice defect on its face.
+info "staging the licence texts for the bundled binaries ..."
+mkdir -p "${STAGE}/doc/licences"
+if [ -f "${CACHE}/ffmpeg-x/LICENSE.txt" ]; then
+    cp "${CACHE}/ffmpeg-x/LICENSE.txt" "${STAGE}/doc/licences/ffmpeg-LICENSE.txt"
+else
+    die "the ffmpeg archive carried no LICENSE.txt -- refusing to ship it unlicensed"
+fi
+# Chromaprint states its terms in LICENSE.md; the release tarball may not carry
+# it, so it is fetched from the tag the binary was built from.
+fetch "https://raw.githubusercontent.com/acoustid/chromaprint/v1.5.1/LICENSE.md"       "${CACHE}/chromaprint-LICENSE.md"
+cp "${CACHE}/chromaprint-LICENSE.md" "${STAGE}/doc/licences/fpcalc-LICENSE.md"
+
+cat > "${STAGE}/doc/licences/README.txt" <<'LICNOTE'
+Third-party binaries redistributed with Cadenza
+===============================================
+
+Cadenza's own code is MIT (see ../LICENSE). The programs below are separate
+works, invoked as separate processes, and carry their own terms.
+
+  bin/ffmpeg, bin/ffprobe, ffmpeg-lib/*
+      FFmpeg, LGPL-3.0-or-later. Build: BtbN/FFmpeg-Builds, linux64-lgpl-shared.
+      Licence text: ffmpeg-LICENSE.txt
+
+  bin/fpcalc
+      Chromaprint fpcalc 1.5.1, MIT AND LGPL-2.1-only. The LGPL applies because
+      the released binary incorporates parts of FFmpeg.
+      Licence text: fpcalc-LICENSE.md
+
+Corresponding source
+--------------------
+The complete corresponding source for both is published alongside every release
+of this package, as source archives attached to the same GitHub release:
+
+    https://github.com/AbdelmonemAwad/cadenza/releases
+
+If a release you have is missing them, open an issue and they will be provided.
+
+Python dependencies bundled in lib/ have their own licences; see
+docs/THIRD-PARTY.md in the project repository for the full inventory.
+LICNOTE
+
 # ---- 4) Application and UI ------------------------------------------------
 info "staging the application ..."
 rm -rf "${STAGE}/app"
@@ -177,5 +232,20 @@ for enc in flac alac pcm_s16le aac libmp3lame libopus libvorbis; do
     fi
 done
 [ -z "${missing}" ] || die "the ffmpeg build lacks encoders the presets require:${missing}"
+
+# ---- 6) Corresponding source, for the LGPL obligation --------------------
+# Written into the build cache and picked up by the release job. LGPL 2.1 s.4
+# does not accept "go and download it from upstream" as source delivery, so the
+# source has to accompany the binaries rather than be pointed at.
+if [ "${FETCH_SOURCES:-1}" = "1" ]; then
+    info "fetching the corresponding source for the redistributed binaries ..."
+    ffver="$("${STAGE}/bin/ffmpeg" -hide_banner -version 2>/dev/null | head -1 | awk '{print $3}')"
+    case "${ffver}" in
+        n*|[0-9]*) : ;;
+        *) ffver="7.1" ;;
+    esac
+    fetch "https://ffmpeg.org/releases/ffmpeg-${ffver#n}.tar.xz"           "${CACHE}/sources/ffmpeg-${ffver#n}.tar.xz"         || info "NOTE: could not fetch ffmpeg ${ffver} source; the release job must supply it"
+    fetch "https://github.com/acoustid/chromaprint/archive/refs/tags/v1.5.1.tar.gz"           "${CACHE}/sources/chromaprint-1.5.1.tar.gz"         || info "NOTE: could not fetch chromaprint source; the release job must supply it"
+fi
 
 info "payload ready: $(du -sh "${STAGE}" | cut -f1)"

@@ -349,8 +349,31 @@ jobs:
           done
           echo "package structure OK"
 
+      # The licence texts have to be inside the package, or it ships LGPL
+      # binaries accompanied by nothing but this project's MIT licence.
+      - name: Verify the redistributed binaries carry their licences
+        run: |
+          for lic in doc/licences/ffmpeg-LICENSE.txt doc/licences/fpcalc-LICENSE.md                      doc/licences/README.txt; do
+            test -s "/tmp/payload/${lic}" || { echo "MISSING licence text: ${lic}"; exit 1; }
+            echo "  present: ${lic}"
+          done
+          grep -q "LESSER GENERAL PUBLIC LICENSE" /tmp/payload/doc/licences/ffmpeg-LICENSE.txt             || { echo "the ffmpeg licence text is not an LGPL text"; exit 1; }
+          # LGPLv3, not v2.1 -- BtbN builds with --enable-version3. Shipping the
+          # wrong text is a notice defect, so the version is asserted here.
+          grep -q "Version 3" /tmp/payload/doc/licences/ffmpeg-LICENSE.txt             || { echo "expected the LGPLv3 text from the lgpl-shared build"; exit 1; }
+
       - uses: actions/upload-artifact@v4
         with:
           name: cadenza-spk
           path: dist/*.spk
           retention-days: 30
+
+      # LGPL 2.1 s.4 does not accept a download link as source delivery, so the
+      # corresponding source travels with the binaries it belongs to.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cadenza-thirdparty-source
+          path: build/cache/sources/*
+          retention-days: 90
+          if-no-files-found: warn
