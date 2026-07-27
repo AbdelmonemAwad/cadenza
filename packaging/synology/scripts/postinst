@@ -242,6 +242,55 @@ chmod 644 "${ETC_DIR}/port.conf" 2>/dev/null || true
 apply_port "${HTTP_PORT}"
 
 # ---------------------------------------------------------------------------
+# Give the service account access to the folders it was told to manage.
+#
+# This is the step whose absence made the package installed-but-useless on a
+# real NAS. DSM runs the service as its own package user -- "cadenza", not the
+# DSM account named in the wizard -- and a Synology shared folder carries no
+# POSIX permissions at all: /volume1/music is mode d--------- and every right
+# comes from an ACL entry. So the package user could not read one byte of the
+# library, and the service refused to start with "config is not writable",
+# which is correct behaviour reporting a packaging defect.
+#
+# Granting the package user an ACL entry is exactly how the other media
+# packages on a Synology do it. On this machine the music share already
+# carried entries for PlexMediaServer, sc-radarr and emby; Cadenza simply
+# never added its own.
+#
+# postinst runs as root, which is what makes this possible here and not in
+# start-stop-status.
+# ---------------------------------------------------------------------------
+PKG_USER="${SYNOPKG_USERNAME:-cadenza}"
+ACL_TOOL="/usr/syno/bin/synoacltool"
+
+grant_access() {
+    _path="$1"
+    _what="$2"
+    [ -d "${_path}" ] || { log_line "NOTE: ${_path} does not exist; skipped ${_what}"; return 0; }
+    if [ ! -x "${ACL_TOOL}" ]; then
+        log_line "NOTE: ${ACL_TOOL} is missing; grant ${PKG_USER} access to ${_path} by hand"
+        return 0
+    fi
+    # Already present? Adding a duplicate entry is harmless but noisy.
+    if "${ACL_TOOL}" -get "${_path}" 2>/dev/null | grep -q "user:${PKG_USER}:allow"; then
+        log_line "${_what}: ${PKG_USER} already has access to ${_path}"
+        return 0
+    fi
+    # rwxpdDaARWc with fd-- inheritance: the same rights DSM grants a user it
+    # adds through Control Panel, so new files and folders inherit it.
+    if "${ACL_TOOL}" -add "${_path}" "user:${PKG_USER}:allow:rwxpdDaARWc--:fd--" >/dev/null 2>&1; then
+        log_line "${_what}: granted ${PKG_USER} read/write on ${_path}"
+    else
+        log_line "WARNING: could not grant ${PKG_USER} access to ${_path}."
+        log_line "Add it in Control Panel -> Shared Folder -> Edit -> Permissions,"
+        log_line "choosing 'System internal user', or Cadenza cannot read your library."
+    fi
+}
+
+grant_access "${MUSIC_PATH}"  "library"
+grant_access "${CONFIG_PATH}" "config folder"
+
+# ---------------------------------------------------------------------------
 # The compose file the user points Container Manager at.
 # ---------------------------------------------------------------------------
 if [ "${UID_IS_A_GUESS}" = "yes" ]; then

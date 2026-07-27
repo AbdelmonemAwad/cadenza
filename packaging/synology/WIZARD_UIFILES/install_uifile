@@ -40,7 +40,7 @@
             },
             {
                 "type": "textfield",
-                "desc": "CONFIG FOLDER for the database, logs, settings and API keys - back this up. It MUST already exist and be writable by the account named below: create it in File Station first, signed in as that account. If it is missing or not writable, Cadenza refuses to start and says so in its log rather than failing silently. Do not put it inside the music library.",
+                "desc": "CONFIG FOLDER for the database, logs, settings and API keys - back this up. It must already exist; create it in File Station first. The installer grants Cadenza's own service account access to it, so you do not need to set permissions yourself. Do not put it inside the music library.",
                 "subitems": [
                     {
                         "key": "wizard_config_path",
@@ -58,7 +58,7 @@
             },
             {
                 "type": "textfield",
-                "desc": "RUN AS. Cadenza runs as this DSM account, so every file it writes belongs to that account and it can only touch what that account can reach. Getting it wrong is the most common install problem. Leave it empty to use whoever owns the music folder, which is usually right. Timezone affects log and schedule times; language sets the interface (English or Arabic).",
+                "desc": "TIMEZONE and LANGUAGE for the interface (English or Arabic). The DSM account below is used only if you later run Cadenza as a container instead - the package itself runs as its own service account, and the installer grants that account access to the folders above.",
                 "subitems": [
                     {
                         "key": "wizard_timezone",

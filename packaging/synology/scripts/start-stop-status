@@ -79,10 +79,24 @@ start_daemon() {
     # on its first write. This is the failure the Docker path used to hit as an
     # unexplained restart loop.
     mkdir -p "${CADENZA_CONFIG_DIR}" 2>/dev/null || true
+    _me="$(id -un 2>/dev/null || echo cadenza)"
     if [ ! -w "${CADENZA_CONFIG_DIR}" ]; then
-        log "ERROR: ${CADENZA_CONFIG_DIR} is not writable by $(id -un 2>/dev/null || echo 'the package user')"
-        log "Grant that account write access to the folder, then start again."
+        log "ERROR: ${CADENZA_CONFIG_DIR} is not writable by ${_me}."
+        log "The service runs as ${_me} -- the package's own account, NOT the DSM"
+        log "user chosen at install. A Synology shared folder has no POSIX"
+        log "permissions, so access comes from an ACL entry. Grant one with:"
+        log "  sudo /usr/syno/bin/synoacltool -add ${CADENZA_CONFIG_DIR} \\"
+        log "       'user:${_me}:allow:rwxpdDaARWc--:fd--'"
+        log "or in Control Panel -> Shared Folder -> Edit -> Permissions, with"
+        log "'System internal user' selected. Reinstalling does this for you."
         return 1
+    fi
+    # The library is checked too, and only warned about: a library mounted
+    # read-only on purpose is a supported way to evaluate Cadenza, and scanning
+    # and duplicate analysis never write. Refusing to start would take that away.
+    if [ ! -r "${CADENZA_MUSIC_ROOT}" ]; then
+        log "WARNING: ${CADENZA_MUSIC_ROOT} is not readable by ${_me}, so no track"
+        log "will be found. Grant access as described above, for the library path."
     fi
 
     log "starting on port ${CADENZA_HTTP_PORT} (music=${CADENZA_MUSIC_ROOT})"
