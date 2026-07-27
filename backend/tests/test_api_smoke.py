@@ -6,29 +6,26 @@ mistakes that unit tests on the engines would never see.
 from __future__ import annotations
 
 import pytest
-from fastapi.testclient import TestClient
 
 from app.core.auth import Credentials, hash_password, save_credentials
 from app.main import create_app
 
-
-@pytest.fixture(scope="module")
-def client():
-    """An authenticated client.
-
-    Every /api/v1 route now requires a session, so the smoke tests sign in
-    once. The unauthenticated behaviour is asserted in test_auth.py instead of
-    being re-tested here.
-    """
-    with TestClient(create_app()) as c:
-        save_credentials(Credentials(password_hash=hash_password(_PASSWORD),
-                                     must_change=False))
-        response = c.post("/api/v1/auth/login", json={"password": _PASSWORD})
-        assert response.status_code == 200, response.text
-        yield c
-
-
 _PASSWORD = "smoke-test-password-value"
+
+
+@pytest.fixture
+def client(app_client):
+    """Authenticated client over the shared app instance.
+
+    Every /api/v1 route now requires a session, so these sign in first; the
+    unauthenticated behaviour is asserted in test_auth.py.
+    """
+    save_credentials(Credentials(password_hash=hash_password(_PASSWORD),
+                                 must_change=False))
+    app_client.cookies.clear()
+    response = app_client.post("/api/v1/auth/login", json={"password": _PASSWORD})
+    assert response.status_code == 200, response.text
+    return app_client
 
 
 def test_health(client):

@@ -114,15 +114,40 @@ Scan, review the duplicate report, then switch to `:rw` when you are satisfied.
 
 Read this before exposing Cadenza beyond your own LAN.
 
-**There is no login.** The API has no authentication yet, so anyone who can
-reach port 8760 can browse your library and start jobs that move files. Keep it
-on a trusted network, do not port-forward it, and put it behind DSM's reverse
-proxy with authentication if you need remote access. Tracked as a blocker for
-1.1.
+### Signing in
 
-**API keys are stored in plain text** in `config/settings.json`, and the Apple
-Music user token in `config/apple_user_token.json`. Protect the config volume
-accordingly.
+A random administrator password is generated the first time Cadenza starts.
+Read it from `initial-password.txt` in the config volume — it is written
+`0600` and deleted automatically once you set your own. There is no default
+password: a shared one would look like protection while giving none.
+
+You are required to change it before anything else works. That is enforced by
+the server, not by the sign-in screen, so refreshing the page does not skip it.
+
+Sessions last 14 days. Changing your password ends every other session, and
+**Sign out everywhere** does the same on demand if you think a session leaked.
+
+### Known gaps in 1.0
+
+These are real and tracked; read them before granting write access.
+
+- **`PATCH /api/v1/settings` accepts any known field without validating the
+  value** ([#6](https://github.com/AbdelmonemAwad/cadenza/issues/6)). An
+  authenticated caller can repoint the paths of the binaries Cadenza executes.
+  Until that is fixed, treat write access as equivalent to shell access.
+- **Some destructive endpoints take parameters in the query string**
+  ([#5](https://github.com/AbdelmonemAwad/cadenza/issues/5)), which keeps them
+  reachable as simple cross-origin requests despite `SameSite=Strict`.
+- **Provider API keys are stored in plain text** in `config/settings.json`,
+  along with the Apple Music token. Protect the config volume accordingly.
+- **`convert` with "keep original" turned off deletes the source outright**
+  ([#8](https://github.com/AbdelmonemAwad/cadenza/issues/8)), bypassing
+  quarantine and the audit log. Leave it on.
+
+### Deployment
+
+Keep Cadenza on a trusted network and do not port-forward it. For remote
+access, put it behind DSM's reverse proxy with its own authentication.
 
 The container runs as a normal user, never root, with `no-new-privileges`.
 

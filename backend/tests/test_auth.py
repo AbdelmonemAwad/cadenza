@@ -7,7 +7,6 @@ data-destruction hole, not just an information leak.
 from __future__ import annotations
 
 import pytest
-from fastapi.testclient import TestClient
 
 from app.config import get_settings
 from app.core.auth import (
@@ -19,15 +18,14 @@ from app.core.auth import (
     verify_password,
     verify_session,
 )
-from app.main import create_app
 
 PASSWORD = "a-sufficiently-long-test-password"
 
 
-@pytest.fixture(scope="module")
-def client():
-    with TestClient(create_app()) as c:
-        yield c
+@pytest.fixture
+def client(app_client):
+    """Shared app instance; see conftest.app_client for why it is not per-module."""
+    return app_client
 
 
 @pytest.fixture
