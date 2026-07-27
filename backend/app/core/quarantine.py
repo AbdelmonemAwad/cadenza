@@ -21,6 +21,22 @@ class QuarantineError(Exception):
     pass
 
 
+def _free_name(dest: Path, marker: str, limit: int = 200) -> Path | None:
+    """First unused name of the form `stem<marker>[_n]<suffix>`, or None.
+
+    None rather than a fallback: every caller moves a file onto whatever comes
+    back, so returning an occupied path would destroy it.
+    """
+    candidate = dest.with_name(f"{dest.stem}{marker}{dest.suffix}")
+    if not candidate.exists():
+        return candidate
+    for i in range(2, limit + 1):
+        candidate = dest.with_name(f"{dest.stem}{marker}_{i}{dest.suffix}")
+        if not candidate.exists():
+            return candidate
+    return None
+
+
 class QuarantineManager:
     def __init__(self, session: AsyncSession) -> None:
         self.s = get_settings()
@@ -87,10 +103,15 @@ class QuarantineManager:
 
         stamp = datetime.now(UTC).strftime("%Y%m%d")
         dest = self.root / stamp / rel
-        counter = 1
-        while dest.exists():
-            dest = dest.with_name(f"{dest.stem}__{counter}{dest.suffix}")
-            counter += 1
+        if dest.exists():
+            # The old loop re-derived each candidate from the previous one, so
+            # collisions grew names like "track__1__2__3". More to the point it
+            # was unbounded; this fails loudly instead of trying forever.
+            free = _free_name(dest, "__dup")
+            if free is None:
+                raise QuarantineError(
+                    f"no free name in quarantine for {dest.name}")
+            dest = free
 
         # Belt and braces: whatever the input, the result must land inside the
         # quarantine root or nothing is moved at all.
@@ -117,7 +138,15 @@ class QuarantineManager:
 
         dest.parent.mkdir(parents=True, exist_ok=True)
         if dest.exists():
-            dest = dest.with_name(f"{dest.stem}__restored{dest.suffix}")
+            # A single "__restored" suffix was not enough: restoring twice from
+            # the same original path produced the same name twice, and the
+            # second restore silently overwrote the first. Keep looking until
+            # the name is genuinely free.
+            free = _free_name(dest, "__restored")
+            if free is None:
+                raise QuarantineError(
+                    f"cannot restore: {dest} exists and no free name was available")
+            dest = free
         shutil.move(str(src), str(dest))
 
         sidecar = Path(item.quarantine_path).with_suffix(".lrc")
@@ -156,9 +185,17 @@ class QuarantineManager:
 
     # ---------------- Purge ----------------
 
-    async def purge_expired(self, *, force: bool = False) -> dict[str, int]:
-        """Permanently delete expired items. Requires hard_delete_allowed."""
-        if not (self.s.hard_delete_allowed or force):
+    async def purge_expired(self) -> dict[str, int]:
+        """Permanently delete expired items. Requires hard_delete_allowed.
+
+        There is deliberately no `force` argument. One used to exist, and the
+        API passed it straight through from a query parameter, so
+        `POST /quarantine/purge?force=true` deleted the user's files no matter
+        how the setting was configured. A safety switch that any caller can
+        turn off in the same request is not a safety switch; permanent deletion
+        now happens only when the operator has enabled it in settings.
+        """
+        if not self.s.hard_delete_allowed:
             return {"purged": 0, "skipped": 0, "blocked": 1}
 
         now = datetime.now(UTC).replace(tzinfo=None)
@@ -174,6 +211,10 @@ class QuarantineManager:
             p = Path(item.quarantine_path)
             try:
                 if p.is_file():
+                    # Confirm the row still points inside quarantine. The path
+                    # is written by this class, but a purge is irreversible and
+                    # the check costs nothing.
+                    contained(p, self.root)
                     p.unlink()
                 purged += 1
                 self.session.add(AuditLog(
@@ -181,10 +222,18 @@ class QuarantineManager:
                     detail={"quarantine_id": item.id, "bytes": item.size_bytes},
                 ))
                 await self.session.delete(item)
+                # Committed one at a time. The unlink already happened; if a
+                # later item raised and rolled the whole batch back, the files
+                # would be gone while the rows claimed they were still
+                # restorable, and the audit entries recording the deletion
+                # would be lost with them.
+                await self.session.commit()
+            except PathEscape as exc:
+                skipped += 1
+                log.error("refusing to purge outside quarantine: %s (%s)", p, exc)
             except OSError as exc:
                 skipped += 1
                 log.warning("purge failed %s: %s", p, exc)
-        await self.session.flush()
         return {"purged": purged, "skipped": skipped}
 
     async def stats(self) -> dict:

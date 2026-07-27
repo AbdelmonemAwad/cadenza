@@ -91,6 +91,10 @@ class TranscodeResult:
     dst_bytes: int = 0
     error: str | None = None
     skipped_reason: str | None = None
+    # True when the caller asked for the source to be replaced. The transcoder
+    # does not delete it; the caller quarantines it so the removal is
+    # reversible and audited like every other one.
+    source_replaced: bool = False
 
     @property
     def saved_bytes(self) -> int:
@@ -129,6 +133,18 @@ class Transcoder:
         dst = out_dir / (src.stem + preset.ext)
         if dst.resolve() == src.resolve():
             dst = out_dir / f"{src.stem}.converted{preset.ext}"
+
+        # Never write over a file that is already there. The destination is
+        # derived from the source stem, so converting song.flac to FLAC in a
+        # folder that already holds a different song.flac used to destroy it --
+        # potentially the very lossless original the conversion was meant to
+        # produce. A distinct name is chosen instead of overwriting.
+        if dst.exists():
+            dst = _unique_sibling(dst)
+            if dst is None:
+                return TranscodeResult(
+                    str(src), None, False, preset_name, src_bytes=src_bytes,
+                    error="destination already exists and no free name was available")
 
         if dry_run:
             return TranscodeResult(str(src), str(dst), True, preset_name,
@@ -171,14 +187,16 @@ class Transcoder:
             log.warning("could not copy tags to %s: %s", dst.name, exc)
 
         dst_bytes = dst.stat().st_size
-        if not keep_original:
-            try:
-                src.unlink()
-            except OSError as exc:
-                log.warning("original not removed %s: %s", src, exc)
 
+        # The source is NOT deleted here, even when keep_original is false.
+        # This used to be the one path that destroyed an original outright,
+        # with no quarantine, no hard_delete_allowed check and no audit entry,
+        # which contradicts the guarantee the rest of the project makes. The
+        # caller is told the source is ready for removal and routes it through
+        # quarantine like every other deletion. See issue #8.
         return TranscodeResult(str(src), str(dst), True, preset_name,
-                               src_bytes=src_bytes, dst_bytes=dst_bytes)
+                               src_bytes=src_bytes, dst_bytes=dst_bytes,
+                               source_replaced=not keep_original)
 
     @staticmethod
     def _carry_tags(src: Path, dst: Path) -> None:
@@ -205,6 +223,20 @@ class Transcoder:
                     dest_dir=dest_dir)
 
         return list(await asyncio.gather(*(one(s, p) for s, p in items)))
+
+
+def _unique_sibling(dst: Path, limit: int = 200) -> Path | None:
+    """Return a free name beside `dst`, or None if there is no room.
+
+    Returning None rather than a colliding path matters: the caller writes to
+    whatever comes back, so handing over an occupied path would silently
+    destroy it.
+    """
+    for i in range(2, limit + 1):
+        candidate = dst.with_name(f"{dst.stem} ({i}){dst.suffix}")
+        if not candidate.exists():
+            return candidate
+    return None
 
 
 def ffmpeg_available() -> bool:

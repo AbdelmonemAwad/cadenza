@@ -110,11 +110,13 @@ class Organizer:
         claimed: set[str] = set()
         for t in tracks:
             try:
-                dst = self.render(t, template)
+                dst = self._dedupe_target(self.render(t, template), claimed)
+            except FileExistsError as exc:
+                plans.append(MovePlan(t.id, t.path, t.path, False, str(exc)))
+                continue
             except Exception as exc:
                 plans.append(MovePlan(t.id, t.path, t.path, False, f"template error: {exc}"))
                 continue
-            dst = self._dedupe_target(dst, claimed)
             claimed.add(str(dst).lower())
             plans.append(MovePlan(
                 track_id=t.id, src=t.path, dst=str(dst),
@@ -124,13 +126,21 @@ class Organizer:
 
     @staticmethod
     def _dedupe_target(dst: Path, claimed: set[str]) -> Path:
-        base, i = dst, 2
-        while str(dst).lower() in claimed or (dst.exists() and dst.is_file()):
+        """A target path not already taken by an existing file or an earlier plan.
+
+        Raises rather than giving up after the last attempt. The old version
+        broke out of the loop and returned the still-occupied path, which
+        `apply` then handed to `shutil.move` -- overwriting a real file in the
+        library with a different track. Refusing to plan the move is the only
+        acceptable outcome.
+        """
+        base = dst
+        for i in range(2, 101):
+            if str(dst).lower() not in claimed and not dst.is_file():
+                return dst
             dst = base.with_name(f"{base.stem} ({i}){base.suffix}")
-            i += 1
-            if i > 99:
-                break
-        return dst
+        raise FileExistsError(
+            f"no free target name for {base.name} after 99 attempts")
 
     async def apply(self, plans: list[MovePlan], *, dry_run: bool = True,
                     job_id: int | None = None,
@@ -157,6 +167,14 @@ class Organizer:
                 # library must not be movable.
                 contained(src, self.s.music_root)
                 contained(dst, self.s.music_root)
+                # Re-checked here, not just at plan time. Planning and applying
+                # are separate requests, and a scan or a second job can land a
+                # file on the target in between; shutil.move would overwrite it
+                # without a word.
+                if dst.exists():
+                    failed += 1
+                    errors.append(f"{src.name}: target appeared since planning, not moved")
+                    continue
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 shutil.move(str(src), str(dst))
                 self._move_sidecars(src, dst)
