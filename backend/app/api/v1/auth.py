@@ -8,7 +8,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 
 from app.api.deps import SESSION_COOKIE, user_or_password_reset
@@ -22,6 +22,7 @@ from app.core.auth import (
     set_password,
     verify_password,
 )
+from app.core.ratelimit import client_key, login_limiter
 
 log = logging.getLogger(__name__)
 
@@ -62,19 +63,31 @@ async def status_endpoint() -> dict:
 
 
 @router.post("/login")
-async def login(body: LoginRequest, response: Response) -> dict:
+async def login(body: LoginRequest, request: Request, response: Response) -> dict:
     creds = load_credentials()
     if creds is None:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE,
                             "authentication is not initialised yet")
+
+    # Checked before the hash is computed, so a throttled caller cannot keep
+    # the thread pool busy either.
+    key = client_key(request)
+    retry_after = login_limiter.check(key)
+    if retry_after > 0:
+        log.warning("sign-in throttled for %s", key)
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS, "too many sign-in attempts",
+            headers={"Retry-After": str(int(retry_after) + 1)})
 
     # scrypt is deliberately expensive (~100 ms). Running it inline would block
     # the event loop for that long, so an unauthenticated caller could stall
     # the whole server just by hammering this endpoint.
     ok = await asyncio.to_thread(verify_password, body.password, creds.password_hash)
     if not ok:
-        log.warning("failed sign-in attempt")
+        login_limiter.record_failure(key)
+        log.warning("failed sign-in attempt from %s", key)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid credentials")
+    login_limiter.record_success(key)
 
     # While the generated password is still in force the session is scoped to
     # the password endpoints only; every other route rejects it.
@@ -103,15 +116,28 @@ async def logout_everywhere(response: Response,
 
 
 @router.post("/password")
-async def change_password(body: ChangePasswordRequest, response: Response,
+async def change_password(body: ChangePasswordRequest, request: Request,
+                          response: Response,
                           _user: str = Depends(user_or_password_reset)) -> dict:
     creds = load_credentials()
     if creds is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid credentials")
 
+    # Throttled as well as login: this endpoint also verifies the current
+    # password, so leaving it open would just move the guessing here. A session
+    # is required, but a stolen cookie is exactly the case that matters.
+    key = client_key(request)
+    retry_after = login_limiter.check(key)
+    if retry_after > 0:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS, "too many attempts",
+            headers={"Retry-After": str(int(retry_after) + 1)})
+
     ok = await asyncio.to_thread(verify_password, body.current_password, creds.password_hash)
     if not ok:
+        login_limiter.record_failure(key)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid credentials")
+    login_limiter.record_success(key)
     if body.new_password == body.current_password:
         raise HTTPException(status.HTTP_400_BAD_REQUEST,
                             "the new password must differ from the current one")
