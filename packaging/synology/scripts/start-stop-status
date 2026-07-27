@@ -64,6 +64,40 @@ is_running() {
     kill -0 "${pid}" 2>/dev/null
 }
 
+# Every process still running out of this package's directory, whatever
+# started it.
+#
+# The PID file alone is not enough. It lives on the volume, it is gone if the
+# data directory is cleared, and it says nothing about a process that outlived
+# the script which recorded it -- which is exactly the case that stranded a
+# running service through an uninstall.
+#
+# Read from /proc rather than from ps: DSM's ps and BusyBox's ps disagree about
+# which flags select a full command line, and a wrong flag here would silently
+# match nothing. The pattern is the package's own target path, so nothing
+# outside this package can match.
+package_pids() {
+    for _p in /proc/[0-9]*; do
+        _pid="${_p#/proc/}"
+        [ "${_pid}" = "$$" ] && continue
+        _cmd=""
+        # read, not $(tr '\0' ' ' < ...). One fork per process, over the ~700
+        # entries in /proc on an idle DS1821+, made a single scan take eight
+        # seconds -- and this loop runs repeatedly. read stops at the first NUL,
+        # which leaves argv[0], and argv[0] is the absolute interpreter path
+        # this matches on.
+        #
+        # Braced with the redirection outside: when a process exits between the
+        # glob and the read, it is the shell that reports the failed redirect,
+        # before the inner command's own 2>/dev/null could apply. Unbraced, an
+        # ordinary uninstall printed a page of "No such file or directory".
+        { read -r _cmd < "${_p}/cmdline"; } 2>/dev/null
+        case "${_cmd}" in
+            *"${TARGET}/"*) echo "${_pid}" ;;
+        esac
+    done
+}
+
 start_daemon() {
     if is_running; then
         log "already running (pid $(cat "${PID_FILE}"))"
@@ -163,6 +197,24 @@ stop_daemon() {
         esac
         rm -f "${PID_FILE}"
     fi
+
+    # Then anything else still running out of target/. Uninstalling used to
+    # leave the service alive: DSM deleted /var/packages/Cadenza while uvicorn
+    # kept running from the deleted files, still bound to the port and still
+    # answering /health with the version that had just been removed. Measured
+    # on a DS1821+.
+    remaining="$(package_pids)"
+    if [ -n "${remaining}" ]; then
+        log "stopping leftover processes:${remaining}"
+        for pid in ${remaining}; do kill "${pid}" 2>/dev/null; done
+        i=0
+        while [ ${i} -lt 15 ] && [ -n "$(package_pids)" ]; do
+            sleep 1
+            i=$((i + 1))
+        done
+        for pid in $(package_pids); do kill -9 "${pid}" 2>/dev/null; done
+    fi
+
     log "stopped"
     return 0
 }

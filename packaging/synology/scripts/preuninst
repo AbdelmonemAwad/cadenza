@@ -1,5 +1,62 @@
 #!/bin/sh
-# Pre-uninstall. Nothing to tear down: this package does not start a service.
-# Nothing external is touched on uninstall. The service is stopped and
-# deliberately left untouched.
+# Stop the service before DSM removes the files underneath it.
+#
+# This script used to be a no-op whose comment claimed the package did not
+# start a service. That was true of the Docker-era package and stopped being
+# true when Cadenza started running natively -- but the comment stayed, and so
+# did the empty script.
+#
+# What that cost, measured on a DS1821+: uninstalling from Package Center
+# removed /var/packages/Cadenza while uvicorn kept running from the deleted
+# files, still bound to 0.0.0.0:8760 and still answering /health with the
+# version that had just been uninstalled. Package Center reported the package
+# gone. A reinstall would then have found its own port taken by its own
+# predecessor and died at startup with "Address already in use".
+set -u
+
+PKG_NAME="${SYNOPKG_PKGNAME:-Cadenza}"
+PKG_DIR="/var/packages/${PKG_NAME}"
+TARGET="${PKG_DIR}/target"
+SSS="${PKG_DIR}/scripts/start-stop-status"
+
+# The ordinary path: the control script knows the PID it recorded and gives the
+# application time to close the database and finish whatever move is in flight.
+[ -r "${SSS}" ] && sh "${SSS}" stop >/dev/null 2>&1
+
+# Verified, not assumed. If the control script is gone, or its PID file was
+# lost with the data directory, the process is still there -- and this is the
+# last moment at which anything can stop it, because the next step deletes the
+# executable out from under it.
+i=0
+while [ ${i} -lt 20 ]; do
+    alive=""
+    for p in /proc/[0-9]*; do
+        pid="${p#/proc/}"
+        [ "${pid}" = "$$" ] && continue
+        cmd=""
+        # read rather than a forked tr, and the redirection braced so a process
+        # that exits mid-scan does not print an error. Both reasons are spelled
+        # out in package_pids() in start-stop-status, which does the same thing.
+        { read -r cmd < "${p}/cmdline"; } 2>/dev/null
+        case "${cmd}" in
+            *"${TARGET}/"*) alive="${alive} ${pid}" ;;
+        esac
+    done
+    [ -z "${alive}" ] && break
+    # Ten seconds of SIGTERM before SIGKILL, for the same reason the control
+    # script waits: a tag write or a quarantine move interrupted halfway is the
+    # one outcome this application exists to prevent.
+    if [ ${i} -lt 10 ]; then
+        kill ${alive} 2>/dev/null
+    else
+        kill -9 ${alive} 2>/dev/null
+    fi
+    sleep 1
+    i=$((i + 1))
+done
+
+# Never fail the uninstall. A package that cannot be removed is a worse problem
+# than one that leaves a process behind, and by here SIGKILL has already been
+# tried. Music files and the quarantine folder are not touched, here or in
+# postuninst.
 exit 0

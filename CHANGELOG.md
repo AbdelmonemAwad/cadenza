@@ -4,6 +4,26 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.1.2] - 2026-07-28
+
+### Fixed
+
+- **Uninstalling now stops the service.** `preuninst` was a no-op left over from
+  the Docker-era package, and its comment still claimed the package did not run
+  a service — untrue from the moment Cadenza started running natively. Removing
+  the package from Package Center deleted `/var/packages/Cadenza` while uvicorn
+  kept running from the deleted files: still bound to the port, still answering
+  `/health` with the version that had just been uninstalled, while Package
+  Center reported it gone. A reinstall would then have found its own port held
+  by its own predecessor and died at startup with `Address already in use`.
+  Found on a DS1821+, where an uninstalled 2.0.3 was still serving requests.
+- **Stopping no longer depends on the PID file alone.** That file lives on the
+  volume, disappears if the data directory is cleared, and says nothing about a
+  process that outlived the script which recorded it. `stop` now also finds
+  anything still running out of the package's own `target/` directory — read
+  from `/proc`, because DSM's `ps` and BusyBox's `ps` disagree about which flags
+  print a full command line — and gives it SIGTERM before SIGKILL.
+
 ## [2.1.0] - 2026-07-28
 
 ### Changed
