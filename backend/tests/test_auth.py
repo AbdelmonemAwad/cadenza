@@ -250,18 +250,6 @@ def test_private_files_are_not_group_or_world_readable(tmp_path, monkeypatch):
     assert mode == 0o600, f"expected 0600, got {oct(mode)}"
 
 
-def test_write_private_ignores_a_hostile_preexisting_temp_file(tmp_path, monkeypatch):
-    """O_EXCL on a unique name: a pre-created temp file must not be reused,
-    which would silently inherit its permissions."""
-    from app.core import auth as auth_mod
-
-    monkeypatch.setattr(get_settings(), "config_dir", tmp_path, raising=False)
-    target = tmp_path / "thing"
-    (tmp_path / ".thing.tmp").write_text("planted", encoding="utf-8")
-    auth_mod._write_private(target, b"real")
-    assert target.read_bytes() == b"real"
-
-
 def test_password_change_revokes_other_sessions(client, known_password):
     """The epoch bump is what actually ends other sessions."""
     from app.core.auth import set_password

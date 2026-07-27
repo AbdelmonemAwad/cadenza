@@ -1,12 +1,11 @@
 """Apple Music integration: library matching, playlists and missing-track discovery."""
 from __future__ import annotations
 
-import contextlib
 import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, Response
 from pydantic import BaseModel
 from rapidfuzz import fuzz
 from sqlalchemy import func, select
@@ -14,9 +13,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.core.dedup import normalize_text
+from app.core.secretfile import write_private_text
 from app.db.base import get_session
 from app.db.models import Playlist, Track, TrackStatus
-from app.providers.applemusic import AppleMusicProvider
+from app.providers.applemusic import TOKEN_TTL, AppleMusicProvider
 from app.providers.base import ProviderError
 
 router = APIRouter()
@@ -68,25 +68,35 @@ async def status(s: AsyncSession = Depends(get_session)) -> dict:
 
 
 @router.get("/developer-token")
-async def developer_token(s: AsyncSession = Depends(get_session)) -> dict:
-    """Consumed by MusicKit JS in the browser to start the user sign-in flow."""
+async def developer_token(response: Response,
+                          s: AsyncSession = Depends(get_session)) -> dict:
+    """Consumed by MusicKit JS in the browser to start the user sign-in flow.
+
+    Behind the session dependency like every other route here, and short-lived:
+    the token is signed with the user's Apple Developer private key, identifies
+    their team, and cannot be revoked on its own. `expires_in` tells the UI when
+    to ask again.
+    """
     try:
-        return {"token": _provider(s).developer_token()}
+        provider = _provider(s)
+        token = provider.developer_token()
     except ProviderError as exc:
         raise HTTPException(400, str(exc)) from exc
+    # A credential must not sit in a shared cache or a browser's disk cache.
+    response.headers["Cache-Control"] = "no-store"
+    return {"token": token, "expires_in": TOKEN_TTL}
 
 
 @router.post("/link")
 async def link(music_user_token: str = Body(..., embed=True)) -> dict:
     """Store the Music-User-Token returned by MusicKit JS after the user consents."""
-    path = get_settings().config_dir / USER_TOKEN_FILE
-    path.write_text(json.dumps({
+    # Written 0600 from the moment the file exists. Creating it and then
+    # chmod-ing left the token readable at the process umask in between, on a
+    # config volume that is a DSM shared folder.
+    write_private_text(get_settings().config_dir / USER_TOKEN_FILE, json.dumps({
         "token": music_user_token,
         "saved_at": datetime.now(UTC).isoformat(),
-    }), encoding="utf-8")
-    # Best effort: the token is a credential, but some filesystems reject chmod.
-    with contextlib.suppress(OSError):
-        path.chmod(0o600)
+    }))
     return {"linked": True}
 
 

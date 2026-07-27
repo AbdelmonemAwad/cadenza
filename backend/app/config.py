@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 import json
-import os
 import threading
 from pathlib import Path
 from typing import Any
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from app.core.secretfile import tighten, write_private_text
 
 APP_NAME = "Cadenza"
 APP_VERSION = "1.0.0"
@@ -132,6 +133,19 @@ class Settings(BaseSettings):
                   self.config_dir / "logs", self.quarantine_root):
             p.mkdir(parents=True, exist_ok=True)
 
+    def tighten_secret_files(self) -> None:
+        """Bring credential files down to 0600 on startup.
+
+        New writes are already private. This is for files an earlier version
+        created at the process umask, and for a config volume restored from a
+        backup that did not preserve modes -- neither of which the user has any
+        way to notice.
+        """
+        for name in ("settings.json", "auth.json", "secret_key",
+                     "apple_user_token.json", "initial-password.txt"):
+            tighten(self.config_dir / name)
+        tighten(Path(self.apple_private_key_path))
+
 
 _lock = threading.RLock()
 _instance: Settings | None = None
@@ -174,9 +188,11 @@ def save_settings(patch: dict[str, Any]) -> Settings:
                 current = {}
         known = set(Settings.model_fields)
         current.update({k: v for k, v in patch.items() if k in known})
-        f.parent.mkdir(parents=True, exist_ok=True)
-        tmp = f.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(current, ensure_ascii=False, indent=2, default=str), "utf-8")
-        os.replace(tmp, f)          # atomic: never leave a half-written config
+        # This file holds the AcoustID, Discogs and Last.fm keys, so it is
+        # written 0600 from the moment it exists. It used to be created at the
+        # process umask on a config volume that is a DSM shared folder, where
+        # other packages and users on the NAS can read it.
+        write_private_text(
+            f, json.dumps(current, ensure_ascii=False, indent=2, default=str))
         _instance = _load_overrides(Settings())
         return _instance

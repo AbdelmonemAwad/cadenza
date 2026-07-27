@@ -23,6 +23,9 @@ async def lifespan(app: FastAPI):
     s = get_settings()
     setup_logging(s.log_level, s.config_dir / "logs" / "cadenza.log")
     s.ensure_dirs()
+    # Credential files written by an earlier version, or restored from a backup
+    # that dropped the modes, are brought down to 0600 before anything is served.
+    s.tighten_secret_files()
 
     # Generate a first-run password before serving anything. A fixed default
     # would be worse than none: it looks protected while every install shares
