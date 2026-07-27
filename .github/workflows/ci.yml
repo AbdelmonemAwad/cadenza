@@ -16,7 +16,10 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Cancel superseded pull request runs, never a run on main. A main run
+  # publishes an image and a release, and cancelling that partway through can
+  # leave a release created with only some of its assets attached.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   # Runs on every push and PR. A leaked credential is unrecoverable once it is
@@ -187,7 +190,7 @@ jobs:
             -v /tmp/cfg:/config -v /tmp/q:/quarantine -v /tmp/music:/music \
             -p 18760:8760 cadenza/cadenza:ci
 
-          for i in $(seq 1 45); do
+          for _ in $(seq 1 45); do
             if curl -fsS http://127.0.0.1:18760/health >/dev/null 2>&1; then
               echo "service answered /health as uid $(docker exec cadenza-nonroot id -u)"
               curl -fsS http://127.0.0.1:18760/health; echo
@@ -417,7 +420,12 @@ jobs:
   release:
     name: Publish release
     runs-on: ubuntu-latest
-    needs: [package]
+    # `secrets` is here deliberately. Without it a release could be published
+    # from a commit whose secret scan failed: package -> docker -> backend and
+    # frontend never touches gitleaks, so a leaked credential would have been
+    # attached to a public release. This is the same reason `publish` waits for
+    # it before pushing an image.
+    needs: [package, secrets]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: write
@@ -491,9 +499,21 @@ jobs:
             echo "Full history: [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/main/CHANGELOG.md)"
           } > "$notes"
 
+          # Collected into an array rather than an unquoted $(ls ...): word
+          # splitting would tear any filename containing a space, and the
+          # third-party download is best effort so the glob may match nothing.
+          assets=()
+          for f in dist/*.spk dist/third-party-source/*; do
+            [ -f "$f" ] && assets+=("$f")
+          done
+          if [ "${#assets[@]}" -eq 0 ]; then
+            echo "::error::no assets to attach to v${VERSION}"
+            exit 1
+          fi
+          printf '  attaching: %s\n' "${assets[@]}"
+
           gh release create "v${VERSION}" \
             --title "Cadenza ${VERSION}" \
             --notes-file "$notes" \
-            dist/*.spk \
-            $(ls dist/third-party-source/* 2>/dev/null || true)
+            "${assets[@]}"
           echo "published v${VERSION}"
