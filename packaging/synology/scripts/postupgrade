@@ -1,15 +1,83 @@
 #!/bin/sh
-# Restore the environment file saved by preupgrade.
+# Restore what preupgrade saved, and re-apply the settings that live in target/.
+#
+# DSM removes and recreates target/ on upgrade, so anything postinst wrote
+# there -- the desktop icon's port, the firewall service definition -- reverts
+# to the values baked into the new package. Wizard variables are not available
+# here either, without a separate upgrade_uifile. etc/ is the only directory
+# that survives, so it holds the authoritative port and everything else is
+# re-derived from it. Without this, every update silently moved the user's
+# interface back to 8760.
 set -u
 
-PKG_NAME="Cadenza"
+PKG_NAME="${SYNOPKG_PKGNAME:-Cadenza}"
 PKG_DIR="/var/packages/${PKG_NAME}"
-STAGE="${PKG_DIR}/var/upgrade-stage"
+ETC_DIR="${PKG_DIR}/etc"
+VAR_DIR="${PKG_DIR}/var"
+STAGE="${VAR_DIR}/upgrade-stage"
+
+mkdir -p "${VAR_DIR}/logs" "${ETC_DIR}"
+
+log_line() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') $*" >> "${VAR_DIR}/logs/package.log" 2>/dev/null || true
+}
 
 if [ -d "${STAGE}" ]; then
-    mkdir -p "${PKG_DIR}/etc"
-    [ -f "${STAGE}/cadenza.env" ] && cp -a "${STAGE}/cadenza.env" "${PKG_DIR}/etc/"
+    [ -f "${STAGE}/cadenza.env" ] && cp -a "${STAGE}/cadenza.env" "${ETC_DIR}/"
+    [ -f "${STAGE}/port.conf" ]   && cp -a "${STAGE}/port.conf"   "${ETC_DIR}/"
     rm -rf "${STAGE}"
+fi
+
+HTTP_PORT="8760"
+if [ -f "${ETC_DIR}/port.conf" ]; then
+    saved=$(sed -n 's/^CADENZA_HTTP_PORT=\([0-9]\{1,\}\)$/\1/p' "${ETC_DIR}/port.conf" 2>/dev/null | head -1)
+    case "${saved}" in
+        ''|*[!0-9]*) : ;;
+        *) [ "${saved}" -ge 1024 ] 2>/dev/null && [ "${saved}" -le 65535 ] 2>/dev/null \
+               && HTTP_PORT="${saved}" ;;
+    esac
+fi
+
+if [ "${HTTP_PORT}" != "8760" ]; then
+    # Written, not patched: seds disagree on backreferences in a replacement,
+    # and a mangled config leaves DSM unable to parse the shortcut at all.
+    _ui="${PKG_DIR}/target/ui/config"
+    if [ -d "${PKG_DIR}/target/ui" ]; then
+        cat > "${_ui}.new" <<UICFG
+{
+    ".url": {
+        "SYNO.SDS._ThirdParty.App.Cadenza": {
+            "type": "url",
+            "allUsers": true,
+            "title": "Cadenza",
+            "desc": "Curate and deduplicate your music library",
+            "icon": "images/cadenza_{0}.png",
+            "protocol": "http",
+            "port": "${HTTP_PORT}",
+            "url": "/",
+            "urlTarget": "_syno_Cadenza",
+            "allowMultiInstance": false,
+            "grantPrivilege": "local"
+        }
+    }
+}
+UICFG
+        if mv "${_ui}.new" "${_ui}" 2>/dev/null; then
+            log_line "Upgrade: desktop icon port restored to ${HTTP_PORT}."
+        else
+            rm -f "${_ui}.new" 2>/dev/null || true
+            log_line "Upgrade WARNING: the desktop icon reset to 8760. Cadenza is"
+            log_line "still on ${HTTP_PORT}; browse to it directly."
+        fi
+    fi
+
+    _sc="${PKG_DIR}/target/conf/cadenza.sc"
+    if [ -f "${_sc}" ]; then
+        sed "s|^dst\.ports=.*|dst.ports=\"${HTTP_PORT}/tcp\"|" "${_sc}" > "${_sc}.new" 2>/dev/null \
+            && mv "${_sc}.new" "${_sc}" 2>/dev/null || rm -f "${_sc}.new" 2>/dev/null || true
+    fi
+    [ -x /usr/syno/sbin/synopkghelper ] \
+        && /usr/syno/sbin/synopkghelper update "${PKG_NAME}" port-config >/dev/null 2>&1 || true
 fi
 
 exit 0

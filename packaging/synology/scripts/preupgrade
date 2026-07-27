@@ -13,5 +13,8 @@ STAGE="${PKG_DIR}/var/upgrade-stage"
 rm -rf "${STAGE}"
 mkdir -p "${STAGE}" || exit 0
 [ -f "${PKG_DIR}/etc/cadenza.env" ] && cp -a "${PKG_DIR}/etc/cadenza.env" "${STAGE}/"
+# The chosen port. target/ is wiped on upgrade, so this is what postupgrade
+# uses to put the desktop icon and firewall entry back where the user set them.
+[ -f "${PKG_DIR}/etc/port.conf" ] && cp -a "${PKG_DIR}/etc/port.conf" "${STAGE}/"
 
 exit 0

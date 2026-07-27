@@ -279,6 +279,23 @@ jobs:
           echo "  checksum declared=$declared actual=$actual"
           test "$declared" = "$actual" || { echo "checksum mismatch"; exit 1; }
           grep -q '^arch="x86_64"' /tmp/spk/INFO || { echo "wrong arch"; exit 1; }
+
+          # DSM resolves dsmuidir and conf/resource's protocol-file against
+          # target/ -- that is, against package.tgz. Checking the OUTER archive
+          # for ui/config passed for months while target/ui did not exist at
+          # all, so the desktop icon could never be registered. Check where DSM
+          # actually looks.
+          mkdir -p /tmp/payload && tar -xzf /tmp/spk/package.tgz -C /tmp/payload
+          uidir=$(grep '^dsmuidir=' /tmp/spk/INFO | cut -d'"' -f2)
+          test -f "/tmp/payload/${uidir}/config" || {
+            echo "MISSING from package.tgz: ${uidir}/config (dsmuidir points here)"
+            echo "payload contains:"; find /tmp/payload -maxdepth 2 | head -20; exit 1; }
+          echo "  present in target/: ${uidir}/config"
+          proto=$(python3 -c "import json;print(json.load(open('/tmp/spk/conf/resource'))['port-config']['protocol-file'])")
+          test -f "/tmp/payload/${proto}" || {
+            echo "MISSING from package.tgz: ${proto} (protocol-file points here)"; exit 1; }
+          echo "  present in target/: ${proto}"
+          python3 -c "import json;json.load(open('/tmp/payload/${uidir}/config'))"             || { echo "ui/config is not valid JSON"; exit 1; }
           # The control scripts must be executable and LF-terminated, or DSM
           # fails them with an opaque error at install time.
           for s in /tmp/spk/scripts/*; do

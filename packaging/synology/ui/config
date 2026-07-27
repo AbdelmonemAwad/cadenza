@@ -7,7 +7,7 @@
             "desc": "Curate and deduplicate your music library",
             "icon": "images/cadenza_{0}.png",
             "protocol": "http",
-            "port": 8760,
+            "port": "8760",
             "url": "/",
             "urlTarget": "_syno_Cadenza",
             "allowMultiInstance": false,
