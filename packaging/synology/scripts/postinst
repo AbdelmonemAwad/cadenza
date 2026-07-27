@@ -260,7 +260,12 @@ apply_port "${HTTP_PORT}"
 # postinst runs as root, which is what makes this possible here and not in
 # start-stop-status.
 # ---------------------------------------------------------------------------
-PKG_USER="${SYNOPKG_USERNAME:-cadenza}"
+# The account the SERVICE runs as, from conf/privilege. Deliberately not
+# SYNOPKG_USERNAME: DSM sets that to the DSM user performing the install, so
+# the first version of this granted access to "eg2" -- the human -- and left
+# the service account with none. The install log said "could not grant eg2
+# access", which is how it was caught.
+PKG_USER="cadenza"
 ACL_TOOL="/usr/syno/bin/synoacltool"
 
 grant_access() {

@@ -78,25 +78,44 @@ start_daemon() {
     # Checked here so the reason is readable, rather than letting the app die
     # on its first write. This is the failure the Docker path used to hit as an
     # unexplained restart loop.
-    mkdir -p "${CADENZA_CONFIG_DIR}" 2>/dev/null || true
     _me="$(id -un 2>/dev/null || echo cadenza)"
+    mkdir -p "${CADENZA_CONFIG_DIR}" 2>/dev/null || true
     if [ ! -w "${CADENZA_CONFIG_DIR}" ]; then
-        log "ERROR: ${CADENZA_CONFIG_DIR} is not writable by ${_me}."
-        log "The service runs as ${_me} -- the package's own account, NOT the DSM"
-        log "user chosen at install. A Synology shared folder has no POSIX"
-        log "permissions, so access comes from an ACL entry. Grant one with:"
-        log "  sudo /usr/syno/bin/synoacltool -add ${CADENZA_CONFIG_DIR} \\"
-        log "       'user:${_me}:allow:rwxpdDaARWc--:fd--'"
-        log "or in Control Panel -> Shared Folder -> Edit -> Permissions, with"
-        log "'System internal user' selected. Reinstalling does this for you."
+        # Fall back rather than refuse. A Synology shared folder carries no
+        # POSIX permissions -- access comes from an ACL entry -- and an
+        # unsigned package cannot add one for itself, so the folder the user
+        # picked is frequently unreachable on a first install. Refusing to
+        # start meant the package installed and did nothing, with the reason
+        # buried in a log file, which is the worst of both. The package
+        # directory is always writable by the service account, so Cadenza
+        # starts, serves its interface, and says what to change.
+        log "NOTE: ${CADENZA_CONFIG_DIR} is not writable by ${_me}."
+        log "Using ${VAR_DIR}/config for now so Cadenza can start."
+        log "To use the folder you chose, grant the service account access:"
+        log "  Control Panel -> Shared Folder -> Edit -> Permissions,"
+        log "  switch the dropdown to 'System internal user', tick ${_me},"
+        log "  then restart the package. Or over SSH:"
+        log "    sudo synoacltool -add ${CADENZA_CONFIG_DIR} 'user:${_me}:allow:rwxpdDaARWc--:fd--'"
+        CADENZA_CONFIG_DIR="${VAR_DIR}/config"
+        export CADENZA_CONFIG_DIR
+        mkdir -p "${CADENZA_CONFIG_DIR}" 2>/dev/null || true
+    fi
+    if [ ! -w "${CADENZA_CONFIG_DIR}" ]; then
+        log "ERROR: ${CADENZA_CONFIG_DIR} is not writable by ${_me} either."
+        log "This should not happen -- it is inside the package's own directory."
         return 1
     fi
     # The library is checked too, and only warned about: a library mounted
     # read-only on purpose is a supported way to evaluate Cadenza, and scanning
     # and duplicate analysis never write. Refusing to start would take that away.
     if [ ! -r "${CADENZA_MUSIC_ROOT}" ]; then
-        log "WARNING: ${CADENZA_MUSIC_ROOT} is not readable by ${_me}, so no track"
-        log "will be found. Grant access as described above, for the library path."
+        log "WARNING: ${CADENZA_MUSIC_ROOT} cannot be read by ${_me}, so a scan"
+        log "will find nothing. This is the one step that cannot be automated:"
+        log "an unsigned DSM package may not grant itself access to a share."
+        log "  Control Panel -> Shared Folder -> select your music folder ->"
+        log "  Edit -> Permissions -> change the dropdown to 'System internal"
+        log "  user' -> tick ${_me} -> Save. Then restart the package."
+        log "This is the same entry Plex, Emby and Radarr each have on that share."
     fi
 
     log "starting on port ${CADENZA_HTTP_PORT} (music=${CADENZA_MUSIC_ROOT})"
