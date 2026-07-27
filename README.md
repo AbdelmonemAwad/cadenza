@@ -67,6 +67,11 @@ Download the latest `.spk` from
 
 **Package Center → Manual Install → select the file**
 
+Every push to `main` also builds and verifies a `.spk`, so an installable
+package for any commit can be downloaded from that run's
+[Actions](https://github.com/AbdelmonemAwad/cadenza/actions) page under
+**Artifacts → cadenza-spk**. No local build environment is needed.
+
 The installer asks for your music folder path, a web port, a timezone, and a
 default language. It never modifies files during installation.
 
@@ -92,9 +97,12 @@ cd cadenza
 make build          # builds the Docker image, then dist/Cadenza-x86_64-1.0.0-0001.spk
 ```
 
-Building the `.spk` needs Linux, WSL2 or macOS (it uses `tar` and `md5sum`);
-you can also run it directly on the NAS over SSH. See
-[CONTRIBUTING.md](CONTRIBUTING.md) for the development setup.
+Building the `.spk` locally needs Linux, WSL2 or macOS (it uses `tar` and
+`md5sum`), or you can run it on the NAS itself over SSH. On Windows, prefer the
+CI artifact described above rather than setting up a build environment.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup, which needs
+neither Docker nor a NAS.
 
 ## How duplicate detection works
 
