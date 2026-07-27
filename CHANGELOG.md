@@ -4,6 +4,79 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.1.0] - 2026-07-28
+
+### Changed
+
+- **You create the account.** Cadenza no longer generates a password, writes it
+  to `initial-password.txt` on the config volume, or forces a change at first
+  sign-in. A fresh install has no account at all: the first person to open the
+  interface chooses the username and the password. `POST /auth/setup` works
+  exactly once and answers `409` afterwards, so nobody can re-claim an install,
+  and it is rate limited like sign-in because it is reachable without a session
+  until it is used. Sign-in takes the username too, and still hashes the
+  password when the username is wrong so the timing does not reveal which was
+  incorrect.
+
+### Removed
+
+- The forced password-change screen and its scoped session subject.
+- Any credential written to disk that the user did not choose.
+
+## [2.0.3] - 2026-07-28
+
+### Fixed
+
+- **The package required Docker.** `INFO` declared
+  `install_dep_packages="ContainerManager>=20.10"`, left from when it wrapped
+  the container, and DSM enforces that at install time — so a NAS without
+  Container Manager refused to install Cadenza. The package now declares no
+  dependencies at all.
+- `postinst` no longer generates a `docker-compose.yml`, and the build no longer
+  ships one inside the package. `docker-compose.yml` stays in the repository for
+  anyone who prefers a container; that is a choice, not a dependency.
+- Removed the `synoacltool` call and the root request in `conf/privilege`. DSM
+  refuses an unsigned package that asks for root — measured on a DS1821+, error
+  4557 at upload — so the one permission that cannot be automated is now stated
+  once and points at Control Panel rather than a shell.
+
+## [2.0.0] - 2026-07-27
+
+### Added
+
+- **The package runs the application.** It bundles CPython 3.12, every Python
+  dependency as a wheel, and static `ffmpeg`, `ffprobe` and `fpcalc`. It needs
+  no Docker, no Python from Package Center and no root, and runs as an
+  unprivileged service account. DSM's own `python3` is 3.8; this codebase
+  requires 3.11 or newer, which is why the interpreter travels with the package.
+- The API serves the built frontend when `www_dir` is set, since the native
+  package has no nginx. Unset in the container, so that path is unchanged.
+- Sign-in throttling, per address and globally, and a licence check that fails
+  the build when a new copyleft dependency appears.
+
+### Fixed
+
+- **Audio conversion had never worked.** The temporary file was named
+  `track.flac.part`; no preset passes `-f`, so ffmpeg picks its muxer from the
+  extension and `.part` is not one. Every conversion failed for every preset.
+  Nothing caught it because the tests never invoked ffmpeg.
+- **The desktop icon had never existed.** `INFO` declares `dsmuidir="ui"`, which
+  DSM resolves against `target/`, but `ui/` was only copied into the outer
+  archive. CI checked the outer archive and passed.
+- Six paths that could delete a file with no way back, including conversion
+  deleting sources outside quarantine and `POST /quarantine/purge?force=true`
+  bypassing `hard_delete_allowed`.
+- Path containment and a positive allowlist for settings writable over the API,
+  closing a remote code execution primitive (`ffmpeg_bin` was argv[0] of every
+  subprocess) and an arbitrary file read.
+- Credential files are written `0600` from the moment they exist, and provider
+  keys are redacted from the log.
+
+### Removed
+
+- `Unidecode` — GPL-2.0-or-later, a direct pin, imported nowhere, and shipped in
+  both the image and the package.
+
 ## [1.0.0] - 2026-07-27
 
 Initial release.

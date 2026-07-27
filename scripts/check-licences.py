@@ -94,9 +94,57 @@ def licence_of(wheel: Path) -> tuple[str, str]:
 
 
 def is_copyleft(licence: str) -> bool:
-    if _PERMISSIVE_ONLY.match(licence):
-        return False
+    """A copyleft term anywhere in the string wins.
+
+    Deliberately has no permissive escape hatch: a dual licence such as
+    "Apache-2.0 OR GPL-3.0" still carries GPL terms for anyone who takes the
+    GPL half, and this project ships the dependency to users either way.
+    """
     return bool(_COPYLEFT.search(licence))
+
+
+def _family(licence: str) -> set[str]:
+    """The copyleft families named in a licence string, with their versions.
+
+    Metadata spells the same licence several ways -- "GPL-2.0-or-later" and
+    "OSI Approved :: GNU General Public License v2 or later (GPLv2+)" -- so the
+    comparison is on what family and version are named, not on the text. An
+    earlier attempt normalised the whole string by substitution and could not
+    match those two at all, which made the guard reject the very packages it
+    had been told to accept.
+    """
+    text = licence.lower()
+    text = text.replace("gnu ", "")
+    text = text.replace("affero general public license", "agpl")
+    text = text.replace("lesser general public license", "lgpl")
+    text = text.replace("general public license", "gpl")
+    text = text.replace("mozilla public license", "mpl")
+    text = text.replace("eclipse public license", "epl")
+
+    families: set[str] = set()
+    for name in ("agpl", "lgpl", "gpl", "mpl", "epl", "eupl", "cddl", "osl", "sspl"):
+        for m in re.finditer(rf"\b{name}\b[^a-z0-9]*v?(\d+)?", text):
+            families.add(f"{name}{m.group(1) or ''}")
+    return families
+
+
+def _same_licence(accepted: str, found: str) -> bool:
+    """Is the licence still the one that was accepted?
+
+    True when they name the same copyleft families. A package that relicenses
+    -- mutagen going AGPL, say -- names a different family and fails, which is
+    the point: the acceptance was a decision about specific terms.
+    """
+    a, f = _family(accepted), _family(found)
+    if not a or not f:
+        return False
+    # A version recorded as "gpl2" must still match a string that only says
+    # "gpl", and vice versa; a different NUMBER is what must not match.
+    def base(x: str) -> str:
+        return x.rstrip("0123456789")
+    return {base(x) for x in a} == {base(x) for x in f} and not (
+        {x for x in a if x != base(x)} and {x for x in f if x != base(x)}
+        and {x for x in a if x != base(x)} != {x for x in f if x != base(x)})
 
 
 def main() -> int:
@@ -123,8 +171,14 @@ def main() -> int:
             key = name.lower().replace("_", "-")
             if licence == "UNKNOWN":
                 unknown.append(entry)
-            elif is_copyleft(licence) and key not in ACCEPTED:
-                surprises.append(entry)
+            elif is_copyleft(licence):
+                # Matched on the name AND the licence. Accepting by name alone
+                # meant a package could relicense -- mutagen going AGPL, say --
+                # and keep sailing through on a decision made about GPL-2.0.
+                expected = ACCEPTED.get(key)
+                if expected is None or not _same_licence(expected, licence):
+                    entry["expected"] = expected or "(not accepted)"
+                    surprises.append(entry)
 
     if args.json:
         print(json.dumps(inventory, indent=2))

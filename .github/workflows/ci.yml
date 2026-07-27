@@ -16,7 +16,10 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Cancel superseded pull request runs, never a run on main. A main run
+  # publishes an image and a release, and cancelling that partway through can
+  # leave a release created with only some of its assets attached.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   # Runs on every push and PR. A leaked credential is unrecoverable once it is
@@ -142,11 +145,16 @@ jobs:
       # --entrypoint is deliberate: it tests the binaries directly and cannot
       # accidentally launch the long-running service stack, which would hang
       # the job until the workflow timeout.
+      # No pipes. `docker run ... | head -1` reports head's exit status, which
+      # is always 0, so this step passed with ffmpeg absent from the image
+      # entirely -- verified: exit 0 through the pipe, 127 without it. The
+      # default shell is `bash -e`, which has no pipefail to save it.
+      # -hide_banner trims the output that head was there to cut.
       - name: Verify the runtime carries its tools
         timeout-minutes: 3
         run: |
-          docker run --rm --entrypoint ffmpeg  cadenza/cadenza:ci -version | head -1
-          docker run --rm --entrypoint ffprobe cadenza/cadenza:ci -version | head -1
+          docker run --rm --entrypoint ffmpeg  cadenza/cadenza:ci -hide_banner -version
+          docker run --rm --entrypoint ffprobe cadenza/cadenza:ci -hide_banner -version
           docker run --rm --entrypoint fpcalc  cadenza/cadenza:ci -version
           docker run --rm --entrypoint nginx   cadenza/cadenza:ci -v
 
@@ -187,7 +195,7 @@ jobs:
             -v /tmp/cfg:/config -v /tmp/q:/quarantine -v /tmp/music:/music \
             -p 18760:8760 cadenza/cadenza:ci
 
-          for i in $(seq 1 45); do
+          for _ in $(seq 1 45); do
             if curl -fsS http://127.0.0.1:18760/health >/dev/null 2>&1; then
               echo "service answered /health as uid $(docker exec cadenza-nonroot id -u)"
               curl -fsS http://127.0.0.1:18760/health; echo
@@ -257,7 +265,14 @@ jobs:
     # already landed on main.
 
     steps:
+      # fetch-depth: 0 is load-bearing, not thoroughness. check-version.sh
+      # compares against origin/<base>, and the default shallow checkout creates
+      # neither that ref nor a merge base -- so the bump gate silently did
+      # nothing and had never once run since it was added. The script now fails
+      # loudly if the ref is missing, and this is what makes it present.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: docker/setup-buildx-action@v3
 
@@ -277,7 +292,9 @@ jobs:
       # pattern match nothing and the build request ".tar.gz". That byte is
       # invisible in a diff, so it is checked mechanically.
       - name: Check the shell scripts
-        run: bash scripts/check-shell-scripts.sh
+        run: |
+          python -m pip install --quiet pyyaml
+          bash scripts/check-shell-scripts.sh
 
       # DSM silently declines a package whose build number is not newer than
       # the installed one, so a forgotten bump does not fail -- it looks like
@@ -353,6 +370,30 @@ jobs:
           echo "  present in target/: ${proto}"
           python3 -c "import json;json.load(open('/tmp/payload/${uidir}/config'))"             || { echo "ui/config is not valid JSON"; exit 1; }
 
+          # ui/config names an icon, and DSM resolves that against dsmuidir too.
+          # Checking the config existed while its icon did not is the same
+          # mistake one level down: the shortcut registered and rendered blank.
+          # The icon path is read out of the config rather than assumed.
+          icon=$(python3 -c "
+          import json
+          cfg = json.load(open('/tmp/payload/${uidir}/config'))
+          entry = next(iter(cfg['.url'].values()))
+          print(entry.get('icon', ''))")
+          if [ -n "${icon}" ]; then
+            # The {0} placeholder is the size DSM substitutes.
+            found=0
+            for size in 16 24 32 48 72 256; do
+              candidate="/tmp/payload/${uidir}/$(echo "${icon}" | sed "s/{0}/${size}/")"
+              [ -s "${candidate}" ] && found=$((found + 1))
+            done
+            if [ "${found}" -eq 0 ]; then
+              echo "MISSING from package.tgz: ${uidir}/${icon} — ui/config names an"
+              echo "icon that is not in the payload, so the desktop tile renders blank."
+              exit 1
+            fi
+            echo "  present in target/: ${found} icon size(s) for ${icon}"
+          fi
+
           # The runtime the package cannot start without. Each of these was
           # absent from the package for its whole life before the native build.
           for required in python/bin/python3 app/app/main.py www/index.html                           bin/ffmpeg bin/ffprobe bin/fpcalc; do
@@ -408,3 +449,109 @@ jobs:
           path: build/cache/sources/*
           retention-days: 90
           if-no-files-found: warn
+
+  # Every version that lands on main becomes a published release, with the .spk
+  # attached. Without this the repository showed v1.0.0 as the newest release
+  # while VERSION said 2.1.0 -- and README tells people to download the .spk
+  # from Releases, so anyone following it got the very first build: the stub
+  # package that installs and starts nothing.
+  release:
+    name: Publish release
+    runs-on: ubuntu-latest
+    # `secrets` is here deliberately. Without it a release could be published
+    # from a commit whose secret scan failed: package -> docker -> backend and
+    # frontend never touches gitleaks, so a leaked credential would have been
+    # attached to a public release. This is the same reason `publish` waits for
+    # it before pushing an image.
+    needs: [package, secrets]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read the version
+        id: v
+        run: echo "version=$(tr -d ' \t\r\n' < VERSION)" >> "$GITHUB_OUTPUT"
+
+      # Idempotent: a push that does not change VERSION must not fail, and must
+      # not replace the artifacts of a release that already exists.
+      - name: Has this version already been released?
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "v${{ steps.v.outputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "v${{ steps.v.outputs.version }} is already released; nothing to do"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download the package
+        if: steps.check.outputs.exists == 'false'
+        uses: actions/download-artifact@v4
+        with:
+          name: cadenza-spk
+          path: dist
+
+      # The LGPL source that must accompany the ffmpeg and fpcalc binaries. It
+      # is attached to the same release as the package it belongs to, because
+      # LGPL 2.1 s.4 does not accept a download link as source delivery.
+      - name: Download the third-party source
+        if: steps.check.outputs.exists == 'false'
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: cadenza-thirdparty-source
+          path: dist/third-party-source
+
+      - name: Publish
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          ls -lh dist/*.spk
+          notes="$(mktemp)"
+          {
+            echo "Standalone Synology package. It carries its own Python, its own"
+            echo "libraries and its own ffmpeg/ffprobe/fpcalc, declares no package"
+            echo "dependencies, and runs as an unprivileged service account."
+            echo
+            echo "**Install:** Package Center -> Manual Install -> select the .spk."
+            echo
+            echo "**One step afterwards:** DSM does not let an unsigned package grant"
+            echo "itself access to a shared folder, so give the \`cadenza\` account"
+            echo "access to your music: Control Panel -> Shared Folder -> Edit ->"
+            echo "Permissions -> switch the dropdown to 'System internal user' ->"
+            echo "tick \`cadenza\` -> Save."
+            echo
+            echo "You choose the username and password the first time you open it;"
+            echo "nothing is generated and there is no default credential."
+            echo
+            echo "\`third-party-source\` contains the corresponding source for the"
+            echo "bundled LGPL binaries."
+            echo
+            echo "Full history: [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/main/CHANGELOG.md)"
+          } > "$notes"
+
+          # Collected into an array rather than an unquoted $(ls ...): word
+          # splitting would tear any filename containing a space, and the
+          # third-party download is best effort so the glob may match nothing.
+          assets=()
+          for f in dist/*.spk dist/third-party-source/*; do
+            [ -f "$f" ] && assets+=("$f")
+          done
+          if [ "${#assets[@]}" -eq 0 ]; then
+            echo "::error::no assets to attach to v${VERSION}"
+            exit 1
+          fi
+          printf '  attaching: %s\n' "${assets[@]}"
+
+          gh release create "v${VERSION}" \
+            --title "Cadenza ${VERSION}" \
+            --notes-file "$notes" \
+            "${assets[@]}"
+          echo "published v${VERSION}"
