@@ -241,33 +241,54 @@ if [ "${FETCH_SOURCES:-1}" = "1" ]; then
     info "fetching the corresponding source for the redistributed binaries ..."
 
     # BtbN builds from git, not from a release tarball, so `ffmpeg -version`
-    # reports a git describe string like "n7.1.5-10-g2aefd64d48-20260727". The
-    # first attempt at this pasted that whole string into a release URL and
-    # 404'd. Worse, had it been trimmed to "7.1" it would have fetched a
-    # release tarball that is NOT the source these binaries were built from --
-    # which is the one thing "corresponding source" has to mean. The commit is
-    # in the string: the field after the "-g" marker.
+    # reports a git describe string like "n7.1.5-10-g2aefd64d48-20260727".
+    # Pasting that whole string into a release URL 404s; trimming it to "7.1"
+    # would be worse, fetching a release tarball that is NOT the source these
+    # binaries were built from -- the one thing "corresponding source" has to
+    # mean. The commit is in the string, after the "-g" marker.
     ffver="$("${STAGE}/bin/ffmpeg" -hide_banner -version 2>/dev/null | head -1 | awk '{print $3}')"
-    ffcommit="$(printf '%s' "${ffver}" | sed -n 's/.*-g\([0-9a-f]\{7,\}\).*//p')"
+    [ -n "${ffver}" ] || die "ffmpeg did not report a version"
+
+    # Parameter expansion, not sed. The sed version used a \1 backreference,
+    # and the file ended up holding a literal 0x01 byte where that
+    # backreference belonged -- so the pattern matched nothing, the commit came
+    # out empty, and the build asked GitHub for ".tar.gz". Shell parameter
+    # expansion has no escaping layer to lose and no sed dialect to disagree
+    # about.
+    #
+    #   n7.1.5-10-g2aefd64d48-20260727
+    #   ${ffver##*-g}   ->  2aefd64d48-20260727   (after the last -g)
+    #   ${...%%-*}      ->  2aefd64d48            (up to the next -)
+    ffcommit=""
+    case "${ffver}" in
+        *-g*)
+            ffcommit="${ffver##*-g}"
+            ffcommit="${ffcommit%%-*}"
+            ;;
+    esac
 
     if [ -n "${ffcommit}" ]; then
         info "ffmpeg was built from commit ${ffcommit}"
-        fetch "https://github.com/FFmpeg/FFmpeg/archive/${ffcommit}.tar.gz"               "${CACHE}/sources/ffmpeg-${ffcommit}.tar.gz"
+        fetch "https://github.com/FFmpeg/FFmpeg/archive/${ffcommit}.tar.gz" \
+              "${CACHE}/sources/ffmpeg-${ffcommit}.tar.gz"
     else
-        # A plain release build: the tagged tarball is the corresponding source.
-        ffrel="$(printf '%s' "${ffver}" | sed 's/^n//; s/-.*//')"
+        # A plain release build: the tagged tarball IS the corresponding source.
+        ffrel="${ffver#n}"
+        ffrel="${ffrel%%-*}"
         [ -n "${ffrel}" ] || die "cannot determine the ffmpeg version from '${ffver}'"
         info "ffmpeg reports release ${ffrel}"
-        fetch "https://ffmpeg.org/releases/ffmpeg-${ffrel}.tar.xz"               "${CACHE}/sources/ffmpeg-${ffrel}.tar.xz"
+        fetch "https://ffmpeg.org/releases/ffmpeg-${ffrel}.tar.xz" \
+              "${CACHE}/sources/ffmpeg-${ffrel}.tar.xz"
     fi
 
-    fetch "https://github.com/acoustid/chromaprint/archive/refs/tags/v1.5.1.tar.gz"           "${CACHE}/sources/chromaprint-1.5.1.tar.gz"
+    fetch "https://github.com/acoustid/chromaprint/archive/refs/tags/v1.5.1.tar.gz" \
+          "${CACHE}/sources/chromaprint-1.5.1.tar.gz"
 
     # Deliberately fatal. If the corresponding source cannot be obtained, the
-    # binaries must not be shipped either -- an LGPL package without its source
-    # is a compliance failure, not a warning.
-    info "corresponding source staged: $(ls "${CACHE}/sources" | tr '
-' ' ')"
+    # binaries must not ship either -- an LGPL package without its source is a
+    # compliance failure, not something to warn about and continue past.
+    info "corresponding source staged:"
+    ls -1 "${CACHE}/sources" | sed 's/^/  /'
 fi
 
 info "payload ready: $(du -sh "${STAGE}" | cut -f1)"

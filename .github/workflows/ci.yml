@@ -270,6 +270,15 @@ jobs:
       - name: Install packaging prerequisites
         run: python -m pip install --upgrade pip pillow
 
+      # Runs before the build, because a script that will not parse should stop
+      # the job in two seconds rather than after a 300 MB download. It also
+      # rejects control characters: a generation layer once ate an escape and
+      # left a literal 0x01 where a sed backreference belonged, which made the
+      # pattern match nothing and the build request ".tar.gz". That byte is
+      # invisible in a diff, so it is checked mechanically.
+      - name: Check the shell scripts
+        run: bash scripts/check-shell-scripts.sh
+
       # The native payload ships the built UI, so it has to exist before the
       # package is assembled. build-native-payload.sh fails rather than
       # producing a package that serves a blank page.
