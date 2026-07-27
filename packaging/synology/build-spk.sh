@@ -3,11 +3,11 @@
 #  Builds a DSM 7 compatible .spk package (x86_64, Docker-wrapped).
 #
 #  Usage:
-#     ./packaging/synology/build-spk.sh              # build image, then package
-#     SKIP_IMAGE=1 ./packaging/synology/build-spk.sh # reuse an existing image
+#     ./packaging/synology/build-spk.sh
 #
-#  Requirements: bash, tar, coreutils, and docker (to build/export the image).
-#  Runs on Linux, WSL2 or macOS, or directly on the NAS over SSH.
+#  Requirements: bash, tar, coreutils. Docker is no longer needed: the package
+#  does not embed a container image (see issue #2). Runs on Linux, WSL2 or
+#  macOS, or directly on the NAS over SSH.
 # =============================================================================
 set -euo pipefail
 
@@ -17,7 +17,6 @@ ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 PKG_NAME="Cadenza"
 PKG_VERS="${PKG_VERS:-1.0.0-0001}"
 PKG_ARCH="${PKG_ARCH:-x86_64}"
-IMAGE="cadenza/cadenza:1.0.0"
 
 BUILD_DIR="${ROOT_DIR}/build"
 STAGE="${BUILD_DIR}/stage"      # becomes package.tgz -> /var/packages/<pkg>/target
@@ -28,33 +27,26 @@ OUT="${DIST_DIR}/${PKG_NAME}-${PKG_ARCH}-${PKG_VERS}.spk"
 info() { printf '\033[1;34m[build]\033[0m %s\n' "$*"; }
 die()  { printf '\033[1;31m[error]\033[0m %s\n' "$*" >&2; exit 1; }
 
-# ---- 1) Build the Docker image -------------------------------------------
-if [[ "${SKIP_IMAGE:-0}" != "1" ]]; then
-    command -v docker >/dev/null 2>&1 || die "docker not found (or set SKIP_IMAGE=1)"
-    info "building ${IMAGE} for linux/amd64 ..."
-    docker build \
-        --platform linux/amd64 \
-        -f "${ROOT_DIR}/docker/Dockerfile" \
-        -t "${IMAGE}" \
-        "${ROOT_DIR}"
-fi
+# The package no longer embeds the container image, so building one is not part
+# of packaging any more. SKIP_IMAGE is accepted and ignored so existing
+# invocations keep working.
+: "${SKIP_IMAGE:=1}"
 
 # ---- 2) Assemble the package payload -------------------------------------
 info "assembling package payload ..."
 rm -rf "${BUILD_DIR}"
-mkdir -p "${STAGE}"/{docker,image,bin,doc} "${SPK_DIR}" "${DIST_DIR}"
+mkdir -p "${STAGE}"/{docker,bin,doc} "${SPK_DIR}" "${DIST_DIR}"
 
-cp "${ROOT_DIR}/docker/docker-compose.yml" "${STAGE}/docker/"
+# The Container Manager project file, so it is available on the NAS.
+cp "${ROOT_DIR}/docker-compose.yml" "${STAGE}/docker/"
 cp "${ROOT_DIR}/README.md"    "${STAGE}/doc/" 2>/dev/null || true
 cp "${ROOT_DIR}/README.ar.md" "${STAGE}/doc/" 2>/dev/null || true
 cp "${ROOT_DIR}/LICENSE"      "${STAGE}/doc/" 2>/dev/null || true
 
-info "exporting the docker image into the package (this can take a few minutes) ..."
-if command -v docker >/dev/null 2>&1 && docker image inspect "${IMAGE}" >/dev/null 2>&1; then
-    docker save "${IMAGE}" -o "${STAGE}/image/cadenza-image.tar"
-else
-    die "image ${IMAGE} not found - build it first"
-fi
+# The container image is deliberately NOT bundled. This package cannot reach
+# the Docker daemon on DSM 7 (see issue #2), so shipping a ~1.2 GB image inside
+# it would add a 244 MB download that nothing can use. The image is published
+# to ghcr.io instead and Container Manager pulls it directly.
 
 # A small CLI, linked into /usr/local/bin by usr-local-linker.
 cat > "${STAGE}/bin/cadenza" <<'CLI'

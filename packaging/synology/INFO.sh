@@ -6,10 +6,17 @@ PKG_NAME="Cadenza"
 PKG_VERS="${PKG_VERS:-1.0.0-0001}"
 PKG_ARCH="${PKG_ARCH:-x86_64}"
 
+# DSM 7.2 is the baseline actually targeted. Container Manager (package id
+# "ContainerManager") only exists from 7.2; on 7.0 and 7.1 the equivalent
+# package is called "Docker", so a dependency written for one cannot be
+# satisfied on the other. Declaring 7.2 keeps os_min_ver and the dependency
+# consistent instead of advertising untested 7.0 support. See issue #3.
+PKG_OS_MIN="${PKG_OS_MIN:-7.2-64561}"
+
 cat <<EOF
 package="${PKG_NAME}"
 version="${PKG_VERS}"
-os_min_ver="7.0-40000"
+os_min_ver="${PKG_OS_MIN}"
 arch="${PKG_ARCH}"
 maintainer="Cadenza Project"
 maintainer_url="https://github.com/AbdelmonemAwad/cadenza"
