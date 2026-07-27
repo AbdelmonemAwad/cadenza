@@ -61,13 +61,44 @@ def test_no_temporary_file_is_left_behind(tmp_path):
     assert [p.name for p in tmp_path.iterdir()] == ["secret.json"]
 
 
-def test_a_hostile_preexisting_temp_file_is_not_reused(tmp_path):
-    """O_EXCL on a unique name. Reusing a planted temp file would silently
-    inherit whatever permissions its creator chose."""
+def test_a_planted_temp_file_is_refused_rather_than_reused(tmp_path, monkeypatch):
+    """O_EXCL, tested against the name write_private will actually use.
+
+    The first version of this test planted ".thing.tmp" -- a name the function
+    can never generate, since it includes the pid and a random suffix. os.open
+    was therefore never asked to open the planted file, and the test would have
+    passed with O_EXCL removed entirely. The token is pinned here so the
+    attacker's file and the target collide for real.
+    """
+    monkeypatch.setattr("app.core.secretfile.secrets.token_hex", lambda _n: "aaaaaaaa")
     target = tmp_path / "thing"
-    (tmp_path / ".thing.tmp").write_text("planted", encoding="utf-8")
-    write_private(target, b"real")
-    assert target.read_bytes() == b"real"
+    planted = tmp_path / f".thing.{os.getpid()}.aaaaaaaa.tmp"
+    planted.write_text("planted", encoding="utf-8")
+
+    with pytest.raises(FileExistsError):
+        write_private(target, b"real")
+
+    # The planted file is untouched and the target was never created from it.
+    assert planted.read_text(encoding="utf-8") == "planted"
+    assert not target.exists()
+
+
+def test_a_failed_write_leaves_no_orphan_holding_the_secret(tmp_path):
+    """A partial write used to leave the credential under a random name.
+
+    Nothing in the app could ever find it again: DELETE /apple/link, the
+    removal of initial-password.txt and tighten_secret_files all match literal
+    filenames. The secret would sit on the shared folder permanently, hidden
+    from File Station's default view by its leading dot.
+    """
+    from unittest.mock import patch
+
+    target = tmp_path / "apple_user_token.json"
+    with patch("os.write", side_effect=OSError(28, "No space left on device")), \
+            pytest.raises(OSError):
+        write_private(target, b"the-music-user-token")
+
+    assert list(tmp_path.iterdir()) == [], "a credential was left behind"
 
 
 @posix_only

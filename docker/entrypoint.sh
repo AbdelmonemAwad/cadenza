@@ -48,7 +48,7 @@ start_api() {
     /opt/venv/bin/uvicorn app.main:app \
         --host 127.0.0.1 --port 8000 \
         --workers "$CADENZA_API_WORKERS" \
-        --proxy-headers --forwarded-allow-ips='*' \
+        --proxy-headers --forwarded-allow-ips='127.0.0.1' \
         --no-server-header
 }
 

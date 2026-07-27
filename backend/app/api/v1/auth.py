@@ -69,22 +69,29 @@ async def login(body: LoginRequest, request: Request, response: Response) -> dic
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE,
                             "authentication is not initialised yet")
 
-    # Checked before the hash is computed, so a throttled caller cannot keep
-    # the thread pool busy either.
+    # Reserved before the hash is computed. This both keeps a throttled caller
+    # from occupying the thread pool and closes the window that made the
+    # throttle nearly useless: check and record used to be separate calls with
+    # ~100 ms of scrypt between them, so a concurrent burst all passed the
+    # check before any of them had been counted.
     key = client_key(request)
-    retry_after = login_limiter.check(key)
-    if retry_after > 0:
+    decision = login_limiter.reserve(key)
+    if decision.blocked:
         log.warning("sign-in throttled for %s", key)
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS, "too many sign-in attempts",
-            headers={"Retry-After": str(int(retry_after) + 1)})
+            headers={"Retry-After": str(int(decision.retry_after) + 1)})
+    if decision.delay:
+        # Global pressure: everyone waits a little. Deliberately a delay and
+        # not a refusal, so a burst of failures cannot lock the owner out.
+        await asyncio.sleep(decision.delay)
 
     # scrypt is deliberately expensive (~100 ms). Running it inline would block
     # the event loop for that long, so an unauthenticated caller could stall
     # the whole server just by hammering this endpoint.
     ok = await asyncio.to_thread(verify_password, body.password, creds.password_hash)
     if not ok:
-        login_limiter.record_failure(key)
+        # The attempt is already counted; nothing to add here.
         log.warning("failed sign-in attempt from %s", key)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid credentials")
     login_limiter.record_success(key)
@@ -127,15 +134,16 @@ async def change_password(body: ChangePasswordRequest, request: Request,
     # password, so leaving it open would just move the guessing here. A session
     # is required, but a stolen cookie is exactly the case that matters.
     key = client_key(request)
-    retry_after = login_limiter.check(key)
-    if retry_after > 0:
+    decision = login_limiter.reserve(key)
+    if decision.blocked:
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS, "too many attempts",
-            headers={"Retry-After": str(int(retry_after) + 1)})
+            headers={"Retry-After": str(int(decision.retry_after) + 1)})
+    if decision.delay:
+        await asyncio.sleep(decision.delay)
 
     ok = await asyncio.to_thread(verify_password, body.current_password, creds.password_hash)
     if not ok:
-        login_limiter.record_failure(key)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid credentials")
     login_limiter.record_success(key)
     if body.new_password == body.current_password:

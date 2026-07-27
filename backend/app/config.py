@@ -4,10 +4,10 @@ from __future__ import annotations
 import json
 import threading
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from app.core.secretfile import tighten, write_private_text
 
@@ -46,7 +46,27 @@ class Settings(BaseSettings):
     # Set to the Vite dev server, e.g.
     # CADENZA_CORS_DEV_ORIGINS='["http://localhost:5173"]', only while
     # developing. Exact origins -- no wildcards and no port patterns.
-    cors_dev_origins: tuple[str, ...] = ()
+    # NoDecode is load-bearing. Without it pydantic-settings JSON-decodes any
+    # complex field inside the environment source, before validators run, so
+    # the two spellings anyone reaches for first -- CADENZA_CORS_DEV_ORIGINS=
+    # to mean "none", and a bare http://localhost:5173 to mean one origin --
+    # both aborted startup with a SettingsError, thrown before logging is even
+    # configured. A setting that ships off has to be switchable without the
+    # user knowing it is JSON underneath.
+    cors_dev_origins: Annotated[tuple[str, ...], NoDecode] = ()
+
+    @field_validator("cors_dev_origins", mode="before")
+    @classmethod
+    def _split_origins(cls, value: Any) -> Any:
+        """Accept a comma-separated list, a JSON array, or nothing at all."""
+        if not isinstance(value, str):
+            return value
+        text = value.strip()
+        if not text:
+            return ()
+        if text.startswith("["):
+            return tuple(json.loads(text))
+        return tuple(part.strip() for part in text.split(",") if part.strip())
 
     # --- Scanning ---
     follow_symlinks: bool = False

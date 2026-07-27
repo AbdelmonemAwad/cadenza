@@ -10,6 +10,7 @@ answers -version. A conversion engine has to be tested by converting something.
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -62,20 +63,35 @@ def test_no_partial_file_is_left_behind(tone, tmp_path):
     assert not leftovers, f"partial files left in the library: {leftovers}"
 
 
-def test_the_temporary_file_keeps_the_target_extension():
-    """The regression itself, without waiting for ffmpeg to reject it.
+def test_the_temporary_file_keeps_the_target_extension(tone, tmp_path, monkeypatch):
+    """The regression itself, caught at the point the name is built.
 
     ffmpeg infers the muxer from the output extension, so whatever the engine
-    hands it must still end in .flac/.mp3/.m4a.
+    hands it must still end in .flac. The first version of this test asserted
+    that against a filename the test constructed itself, which would have
+    passed with the bug still in place -- it never called anything in
+    app.core.transcode. This one intercepts the real subprocess call and reads
+    the actual output path the engine passes to ffmpeg.
     """
-    import re
-    from pathlib import Path
+    import subprocess as sp
 
-    dst = Path("/music/Artist/Album/01 - Track.flac")
-    tmp = dst.with_name(f".{dst.stem}.part-deadbeef{dst.suffix}")
-    assert tmp.suffix == ".flac"
-    assert tmp.name.startswith("."), "the partial file should be hidden from scans"
-    assert re.search(r"\.part-[0-9a-f]+", tmp.name), "and should be recognisable as partial"
+    seen: list[str] = []
+    real_run = sp.run
+
+    def capture(cmd, *args, **kwargs):
+        if cmd and str(cmd[0]).endswith(("ffmpeg", "ffmpeg.exe")):
+            seen.append(cmd[-1])        # ffmpeg's output file is the last argv
+        return real_run(cmd, *args, **kwargs)
+
+    monkeypatch.setattr(sp, "run", capture)
+    assert Transcoder().transcode(tone, "flac", dest_dir=tmp_path).ok
+
+    assert seen, "the engine never invoked ffmpeg"
+    written = Path(seen[-1])
+    assert written.suffix == ".flac", (
+        f"ffmpeg was handed {written.name!r}; it cannot pick a muxer without a "
+        "recognisable extension")
+    assert written.name.startswith("."), "the partial file should be hidden from scans"
 
 
 def test_two_conversions_of_the_same_track_do_not_collide(tone, tmp_path):

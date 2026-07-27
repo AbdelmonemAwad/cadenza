@@ -20,7 +20,14 @@ COMPOSE_FILE="${VAR_DIR}/docker-compose.yml"
 
 # Values collected by the installation wizard, with sane fallbacks.
 MUSIC_PATH="${wizard_music_path:-/volume1/music}"
-HTTP_PORT="${wizard_http_port:-8760}"
+CONFIG_PATH="${wizard_config_path:-/volume1/docker/cadenza}"
+# Fixed, not asked for. The desktop icon (ui/config), the firewall entry
+# (conf/cadenza.sc) and INFO.sh all hardcode 8760, and postinst cannot rewrite
+# metadata DSM has already read. A wizard port therefore published the
+# container on one port while the icon opened another and the firewall opened a
+# third. Anyone who genuinely needs a different port edits the compose file,
+# where the change is visible.
+HTTP_PORT="8760"
 TIMEZONE="${wizard_timezone:-UTC}"
 LOCALE="${wizard_locale:-en}"
 RUN_USER="${wizard_run_user:-}"
@@ -47,8 +54,16 @@ esac
 
 # Same reasoning for the rest. A port is digits, a locale is one of two values,
 # and a timezone is a Region/City name -- none of them are free text.
-case "${HTTP_PORT}" in
-    ''|*[!0-9]*) HTTP_PORT="8760" ;;
+case "${CONFIG_PATH}" in
+    /volume[0-9]*/?*)  : ;;
+    *) echo "cadenza: refusing an unexpected config path: ${CONFIG_PATH}" >&2
+       CONFIG_PATH="/volume1/docker/cadenza" ;;
+esac
+case "${CONFIG_PATH}" in
+    *[:\"\'\`\$\\]*|*" "*|*'	'*)
+       echo "cadenza: config path contains a character that would corrupt the" >&2
+       echo "         generated compose file; falling back to the default" >&2
+       CONFIG_PATH="/volume1/docker/cadenza" ;;
 esac
 case "${LOCALE}" in
     en|ar) : ;;
@@ -62,7 +77,13 @@ case "${RUN_USER}" in
     *[!A-Za-z0-9._-]*) RUN_USER="" ;;
 esac
 
-mkdir -p "${VAR_DIR}/config" "${VAR_DIR}/logs" "${ETC_DIR}"
+mkdir -p "${VAR_DIR}/logs" "${ETC_DIR}"
+
+# Notes worth surfacing after an install nobody watches. Package Center shows
+# nothing useful, so these go where start-stop-status points the user.
+log_line() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') $*" >> "${VAR_DIR}/logs/package.log" 2>/dev/null || true
+}
 
 # ---------------------------------------------------------------------------
 # Work out the uid:gid the container should run as.
@@ -74,6 +95,12 @@ mkdir -p "${VAR_DIR}/config" "${VAR_DIR}/logs" "${ETC_DIR}"
 # ---------------------------------------------------------------------------
 RUN_UID=""
 RUN_GID=""
+# Records where the answer actually came from. The note in the generated file
+# used to read "resolved from <username>" whenever a username had been typed,
+# even when that lookup failed and the value really came from the folder owner
+# or the fallback -- telling the user the one thing that would stop them
+# checking it.
+UID_SOURCE=""
 
 if [ -n "${RUN_USER}" ]; then
     # Read /etc/passwd directly rather than calling id(1): the package user may
@@ -82,12 +109,16 @@ if [ -n "${RUN_USER}" ]; then
     if [ -n "${entry}" ]; then
         RUN_UID="${entry%%:*}"
         RUN_GID="${entry##*:}"
+        UID_SOURCE="the DSM account ${RUN_USER}"
+    else
+        echo "cadenza: no DSM account named '${RUN_USER}'; using the music folder's owner" >&2
     fi
 fi
 
 if [ -z "${RUN_UID}" ] && [ -d "${MUSIC_PATH}" ]; then
     RUN_UID=$(stat -c '%u' "${MUSIC_PATH}" 2>/dev/null || echo "")
     RUN_GID=$(stat -c '%g' "${MUSIC_PATH}" 2>/dev/null || echo "")
+    [ -n "${RUN_UID}" ] && UID_SOURCE="the owner of ${MUSIC_PATH}"
 fi
 
 # Last resort. 1026:100 is the first account DSM creates plus the "users"
@@ -117,7 +148,7 @@ CADENZA_WORKERS=4
 CADENZA_DEFAULT_LOCALE=${LOCALE}
 HOST_MUSIC_PATH=${MUSIC_PATH}
 HOST_QUARANTINE_PATH=${MUSIC_PATH}/.cadenza-quarantine
-HOST_CONFIG_PATH=${VAR_DIR}/config
+HOST_CONFIG_PATH=${CONFIG_PATH}
 CADENZA_UID=${RUN_UID}
 CADENZA_GID=${RUN_GID}
 
@@ -137,17 +168,23 @@ if [ "${UID_IS_A_GUESS}" = "yes" ]; then
     # over SSH before starting the project, or Cadenza will write files your
     # own account cannot read."
 else
-    UID_NOTE="# Resolved at install time from ${RUN_USER:-the owner of ${MUSIC_PATH}}."
+    UID_NOTE="# Resolved at install time from ${UID_SOURCE}."
 fi
 
 cat > "${COMPOSE_FILE}" <<EOF
 # Cadenza - Container Manager project file
 #
 # Generated at install time from the answers given to the DSM wizard, so the
-# paths, port and user below already match this NAS.
+# paths and user below already match this NAS.
 #
 #     Container Manager -> Project -> Create -> Set path
 #     and point it at the folder holding this file.
+#
+# BEFORE STARTING: the config folder below must already exist and be owned by
+# the account this container runs as. Create it in File Station while signed in
+# as that user. If it does not exist, Docker creates it owned by root and the
+# container cannot write to it -- you will see "/config is not writable" in the
+# project log and the container will restart in a loop.
 #
 # On DSM 7 an unsigned package cannot reach the Docker daemon, which is why the
 # package cannot start the container for you. See
@@ -177,7 +214,13 @@ services:
       # "delete" becomes a full file copy instead of an instant rename.
       - ${MUSIC_PATH}/.cadenza-quarantine:/quarantine:rw
       # Database, logs, artwork cache and your API keys. Back this up.
-      - ${VAR_DIR}/config:/config:rw
+      #
+      # This must be a folder the account above owns. It used to point inside
+      # the package directory, which is created by the installer running as the
+      # package user -- a DIFFERENT account, with no write access for anyone
+      # else. The container then failed its own "/config is not writable" check
+      # on every start and restart-looped forever.
+      - ${CONFIG_PATH}:/config:rw
 
     ports:
       # http://<nas-ip>:${HTTP_PORT}
@@ -204,5 +247,20 @@ services:
       start_period: 40s
 EOF
 chmod 644 "${COMPOSE_FILE}" 2>/dev/null || true
+
+# Container Manager's project picker browses shared folders; it cannot reach
+# /var/packages. Copy the file next to the config folder the user named, which
+# is somewhere they can actually select. This is best effort: the package user
+# may well not have write access to that share, which is exactly why the
+# authoritative copy stays in the package directory and the log says so.
+if cp "${COMPOSE_FILE}" "${CONFIG_PATH}/docker-compose.yml" 2>/dev/null; then
+    log_line "Compose file ready at ${CONFIG_PATH}/docker-compose.yml"
+    log_line "Container Manager -> Project -> Create -> Set path -> ${CONFIG_PATH}"
+else
+    log_line "Could not write to ${CONFIG_PATH} (the installer runs as an"
+    log_line "unprivileged account and may not have access to that share)."
+    log_line "Copy the compose file there yourself:"
+    log_line "  ${COMPOSE_FILE}"
+fi
 
 exit 0

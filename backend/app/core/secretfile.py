@@ -14,6 +14,7 @@ goes through it.
 """
 from __future__ import annotations
 
+import contextlib
 import os
 import secrets
 from pathlib import Path
@@ -36,19 +37,31 @@ def write_private(path: Path, data: bytes) -> None:
     tmp = path.with_name(f".{path.name}.{os.getpid()}.{secrets.token_hex(4)}.tmp")
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, SECRET_MODE)
     try:
-        # Belt and braces against a permissive umask. POSIX-only, and absent on
-        # Windows where developers run the test suite; the O_EXCL create mode
-        # above already carries the permission on the platform that ships.
-        if hasattr(os, "fchmod"):
-            os.fchmod(fd, SECRET_MODE)
-        os.write(fd, data)
-        # Survive a NAS power cut: without this the rename can land while the
-        # contents are still in the page cache, leaving an empty credential
-        # file that silently re-bootstraps a new password.
-        os.fsync(fd)
-    finally:
-        os.close(fd)
-    os.replace(tmp, path)
+        try:
+            # Belt and braces against a permissive umask. POSIX-only, and
+            # absent on Windows where developers run the test suite; the
+            # O_EXCL create mode above already carries the permission on the
+            # platform that ships.
+            if hasattr(os, "fchmod"):
+                os.fchmod(fd, SECRET_MODE)
+            os.write(fd, data)
+            # Survive a NAS power cut: without this the rename can land while
+            # the contents are still in the page cache, leaving an empty
+            # credential file that silently re-bootstraps a new password.
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        os.replace(tmp, path)
+    except BaseException:
+        # A failed write must not leave the credential behind under a name
+        # nothing knows about. The temp name carries a random suffix, so the
+        # app's own cleanup paths -- DELETE /apple/link, removing
+        # initial-password.txt, tighten_secret_files -- all match literal
+        # filenames and would never find it. It would sit on the shared folder
+        # permanently, and hidden from File Station's default view at that.
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
 
 
 def write_private_text(path: Path, text: str) -> None:
