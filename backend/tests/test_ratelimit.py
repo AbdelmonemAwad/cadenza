@@ -250,8 +250,7 @@ def test_login_answers_429_once_the_limit_is_reached(app_client):
     from app.core.auth import Credentials, hash_password, save_credentials
     from app.core.ratelimit import login_limiter
 
-    save_credentials(Credentials(password_hash=hash_password("rate-limit-test-password"),
-                                 must_change=False))
+    save_credentials(Credentials(password_hash=hash_password("rate-limit-test-password")))
     login_limiter.reset()
     app_client.cookies.clear()
     try:

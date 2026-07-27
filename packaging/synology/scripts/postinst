@@ -1,69 +1,64 @@
 #!/bin/sh
-# Post-install setup.
+# Post-install setup for a standalone package.
 #
-# Runs as the unprivileged package user (sc-cadenza), never root: DSM 7 refuses
-# to install a third-party package that asks for root. That means this script
-# may only write inside the package's own directories -- no chown, no touching
-# the user's shared folders, no docker.
+# Cadenza carries its own CPython, its own Python libraries and its own
+# ffmpeg/ffprobe/fpcalc. It needs no Docker, no Container Manager, no Python
+# from Package Center, and no root. It runs as the unprivileged package user.
 #
-# What it produces is a docker-compose.yml filled in with the answers from the
-# install wizard, so the Container Manager step is paste-and-go instead of
-# hand-editing paths, a port and a uid the user has to look up over SSH.
+# This script therefore does very little: record the wizard's answers where the
+# service reads them, point the DSM icon and firewall entry at the chosen port,
+# and state the one permission step DSM will not let an unsigned package do for
+# itself.
 set -u
 
-PKG_NAME="Cadenza"
+PKG_NAME="${SYNOPKG_PKGNAME:-Cadenza}"
 PKG_DIR="/var/packages/${PKG_NAME}"
 VAR_DIR="${PKG_DIR}/var"
 ETC_DIR="${PKG_DIR}/etc"
 ENV_FILE="${ETC_DIR}/cadenza.env"
-COMPOSE_FILE="${VAR_DIR}/docker-compose.yml"
 
-# Values collected by the installation wizard, with sane fallbacks.
+# The account the SERVICE runs as, from conf/privilege. Deliberately not
+# SYNOPKG_USERNAME: DSM sets that to the DSM user performing the install, so an
+# earlier version granted permissions to the human instead of the service.
+PKG_USER="cadenza"
+
 MUSIC_PATH="${wizard_music_path:-/volume1/music}"
-CONFIG_PATH="${wizard_config_path:-/volume1/docker/cadenza}"
+CONFIG_PATH="${wizard_config_path:-}"
 HTTP_PORT="${wizard_http_port:-8760}"
 TIMEZONE="${wizard_timezone:-UTC}"
 LOCALE="${wizard_locale:-en}"
-RUN_USER="${wizard_run_user:-}"
 
-# The wizard validates these in the DSM UI, but that validation is client side
-# and a command-line install sets the variables directly. Everything below is
-# interpolated into a YAML document and a shell heredoc, so it is re-checked
-# here rather than trusted.
-#
-# A colon is the one that bites quietly: docker-compose splits a short-form
-# volume on colons, so /volume1/my:music produces a mount of /volume1/my at
-# "music" instead of an error anyone would notice.
+# The wizard validates these in the DSM UI, but that check is client side and a
+# command-line install sets the variables directly, so they are re-checked here.
 case "${MUSIC_PATH}" in
-    /volume[0-9]*/?*)  : ;;
-    *) echo "cadenza: refusing an unexpected library path: ${MUSIC_PATH}" >&2
-       MUSIC_PATH="/volume1/music" ;;
+    /volume[0-9]*/?*) : ;;
+    *) MUSIC_PATH="/volume1/music" ;;
 esac
 case "${MUSIC_PATH}" in
-    *[:\"\'\`\$\\]*|*" "*|*'	'*)
-       echo "cadenza: library path contains a character that would corrupt the" >&2
-       echo "         generated compose file; falling back to /volume1/music" >&2
-       MUSIC_PATH="/volume1/music" ;;
+    *[:\"\'\`\$\\]*|*" "*|*'	'*) MUSIC_PATH="/volume1/music" ;;
 esac
 
-# Same reasoning for the rest. A port is digits, a locale is one of two values,
-# and a timezone is a Region/City name -- none of them are free text.
-case "${CONFIG_PATH}" in
-    /volume[0-9]*/?*)  : ;;
-    *) echo "cadenza: refusing an unexpected config path: ${CONFIG_PATH}" >&2
-       CONFIG_PATH="/volume1/docker/cadenza" ;;
-esac
-case "${CONFIG_PATH}" in
-    *[:\"\'\`\$\\]*|*" "*|*'	'*)
-       echo "cadenza: config path contains a character that would corrupt the" >&2
-       echo "         generated compose file; falling back to the default" >&2
-       CONFIG_PATH="/volume1/docker/cadenza" ;;
-esac
-# 1024-65535. Below 1024 needs privilege the service does not have, and a
-# non-numeric value would be interpolated straight into the compose file.
+# Empty means "use the package's own directory", which is always writable by
+# the service account and needs no permission step at all. That is the default
+# precisely so a first install works with nothing to configure.
+if [ -n "${CONFIG_PATH}" ]; then
+    case "${CONFIG_PATH}" in
+        /volume[0-9]*/?*) : ;;
+        *) CONFIG_PATH="" ;;
+    esac
+fi
+if [ -n "${CONFIG_PATH}" ]; then
+    case "${CONFIG_PATH}" in
+        *[:\"\'\`\$\\]*|*" "*|*'	'*) CONFIG_PATH="" ;;
+    esac
+fi
+[ -n "${CONFIG_PATH}" ] || CONFIG_PATH="${VAR_DIR}/config"
+
+# 1024-65535. Below 1024 needs a privilege the service does not have.
 case "${HTTP_PORT}" in
     ''|*[!0-9]*) HTTP_PORT="8760" ;;
-    *) [ "${HTTP_PORT}" -ge 1024 ] 2>/dev/null && [ "${HTTP_PORT}" -le 65535 ] 2>/dev/null || HTTP_PORT="8760" ;;
+    *) [ "${HTTP_PORT}" -ge 1024 ] 2>/dev/null && [ "${HTTP_PORT}" -le 65535 ] 2>/dev/null \
+           || HTTP_PORT="8760" ;;
 esac
 case "${LOCALE}" in
     en|ar) : ;;
@@ -72,37 +67,25 @@ esac
 case "${TIMEZONE}" in
     ''|*[!A-Za-z0-9_/+-]*) TIMEZONE="UTC" ;;
 esac
-# The username is only ever used as an awk field comparison and in a comment.
-case "${RUN_USER}" in
-    *[!A-Za-z0-9._-]*) RUN_USER="" ;;
-esac
 
-mkdir -p "${VAR_DIR}/logs" "${ETC_DIR}"
+mkdir -p "${VAR_DIR}/logs" "${VAR_DIR}/config" "${ETC_DIR}"
 
-# Notes worth surfacing after an install nobody watches. Package Center shows
-# nothing useful, so these go where start-stop-status points the user.
 log_line() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') $*" >> "${VAR_DIR}/logs/package.log" 2>/dev/null || true
 }
 
-# Write the chosen port into the two files DSM reads, and tell the user about
-# the one place it cannot be changed.
+# ---------------------------------------------------------------------------
+# Point DSM's own entries at the chosen port.
+# ---------------------------------------------------------------------------
 apply_port() {
     _port="$1"
     _ui="${PKG_DIR}/target/ui/config"
     _sc="${PKG_DIR}/target/conf/cadenza.sc"
 
-    # The desktop shortcut. It is a type:"url" entry, so DSM renders whatever
-    # port this file names -- there is no key that makes it follow the service
-    # on its own. allowAltPort was tried here and removed: it enrols a
-    # type:"app" entry in DSM's Application Portal reverse proxy, a different
-    # mechanism entirely, and beside a hardcoded port it did nothing.
-    #
-    # The file is WRITTEN, not patched. Rewriting JSON with sed produced a
-    # literal 0x01 where the backreference should have been -- BusyBox, GNU and
-    # MSYS seds do not agree on backreferences in a replacement -- and left DSM
-    # with a config it could not parse. Emitting the document has no dialect to
-    # get wrong.
+    # Written, not patched. Rewriting this JSON with sed produced a literal
+    # 0x01 where the backreference belonged -- BusyBox, GNU and MSYS seds do
+    # not agree about backreferences in a replacement -- and left DSM unable to
+    # parse the shortcut. Emitting the document has no dialect to get wrong.
     if [ -d "${PKG_DIR}/target/ui" ]; then
         cat > "${_ui}.new" <<UICFG
 {
@@ -131,284 +114,81 @@ UICFG
         fi
     fi
 
-    # The firewall service definition. port-config is acquired BEFORE postinst
-    # runs and the copy is skipped when the destination already exists, so
-    # editing the payload copy is not enough on its own -- synopkghelper has to
-    # be asked to update the resource.
+    # port-config is acquired before postinst runs and the copy is skipped when
+    # the destination exists, so editing the payload copy is not enough on its
+    # own -- synopkghelper has to be asked to refresh the resource.
     if [ -f "${_sc}" ]; then
-        sed "s|^dst\.ports=.*|dst.ports=\"${_port}/tcp\"|" "${_sc}" > "${_sc}.new" 2>/dev/null             && mv "${_sc}.new" "${_sc}" 2>/dev/null || rm -f "${_sc}.new" 2>/dev/null || true
+        sed "s|^dst\.ports=.*|dst.ports=\"${_port}/tcp\"|" "${_sc}" > "${_sc}.new" 2>/dev/null \
+            && mv "${_sc}.new" "${_sc}" 2>/dev/null || rm -f "${_sc}.new" 2>/dev/null || true
     fi
     if [ -x /usr/syno/sbin/synopkghelper ]; then
-        /usr/syno/sbin/synopkghelper update "${SYNOPKG_PKGNAME:-Cadenza}" port-config >/dev/null 2>&1             && log_line "Firewall service definition updated to ${_port}/tcp."             || log_line "NOTE: if DSM's firewall is on, allow ${_port}/tcp under Control Panel -> Security -> Firewall."
+        /usr/syno/sbin/synopkghelper update "${PKG_NAME}" port-config >/dev/null 2>&1 \
+            && log_line "Firewall entry set to ${_port}/tcp." \
+            || log_line "NOTE: if DSM's firewall is on, allow ${_port}/tcp yourself."
     else
-        log_line "NOTE: if DSM's firewall is on, allow ${_port}/tcp under Control Panel -> Security -> Firewall."
+        log_line "NOTE: if DSM's firewall is on, allow ${_port}/tcp yourself."
     fi
 
-    # INFO's adminport is fixed when the .spk is built and no install-time
-    # script can change it, so Package Center's own "Open" link keeps naming
-    # the default. Said plainly rather than left to be discovered.
+    # INFO's adminport is fixed when the package is built and no install-time
+    # script can change it, so Package Center's Open button keeps naming 8760.
     if [ "${_port}" != "8760" ]; then
-        log_line "Package Center's Open button still uses 8760 (it is baked into"
-        log_line "the package at build time). Use the desktop icon, or browse to"
-        log_line "http://<nas>:${_port} directly."
+        log_line "Package Center's Open button still uses 8760 (baked in at build"
+        log_line "time). Use the desktop icon, or http://<this-nas>:${_port}"
     fi
 }
 
 # ---------------------------------------------------------------------------
-# Work out the uid:gid the container should run as.
-#
-# This is the setting people get wrong, and getting it wrong means every file
-# Cadenza writes is owned by an account that cannot read the music share. The
-# wizard asks for a DSM username; if it was left blank, fall back to whoever
-# owns the music folder, which is the right answer in almost every case.
+# What the service reads at startup.
 # ---------------------------------------------------------------------------
-RUN_UID=""
-RUN_GID=""
-# Records where the answer actually came from. The note in the generated file
-# used to read "resolved from <username>" whenever a username had been typed,
-# even when that lookup failed and the value really came from the folder owner
-# or the fallback -- telling the user the one thing that would stop them
-# checking it.
-UID_SOURCE=""
-
-if [ -n "${RUN_USER}" ]; then
-    # Read /etc/passwd directly rather than calling id(1): the package user may
-    # not be allowed to query another account through NSS.
-    entry=$(awk -F: -v u="${RUN_USER}" '$1 == u { print $3 ":" $4; exit }' /etc/passwd 2>/dev/null)
-    if [ -n "${entry}" ]; then
-        RUN_UID="${entry%%:*}"
-        RUN_GID="${entry##*:}"
-        UID_SOURCE="the DSM account ${RUN_USER}"
-    else
-        echo "cadenza: no DSM account named '${RUN_USER}'; using the music folder's owner" >&2
-    fi
-fi
-
-if [ -z "${RUN_UID}" ] && [ -d "${MUSIC_PATH}" ]; then
-    RUN_UID=$(stat -c '%u' "${MUSIC_PATH}" 2>/dev/null || echo "")
-    RUN_GID=$(stat -c '%g' "${MUSIC_PATH}" 2>/dev/null || echo "")
-    [ -n "${RUN_UID}" ] && UID_SOURCE="the owner of ${MUSIC_PATH}"
-fi
-
-# Last resort. 1026:100 is the first account DSM creates plus the "users"
-# group. It is a guess, and the generated file says so rather than presenting
-# it as though it had been looked up.
-UID_IS_A_GUESS="no"
-if [ -z "${RUN_UID}" ] || [ -z "${RUN_GID}" ]; then
-    RUN_UID="1026"
-    RUN_GID="100"
-    UID_IS_A_GUESS="yes"
-fi
-
-# Never generate a compose file that runs the container as root, whatever the
-# wizard said or the folder reported.
-if [ "${RUN_UID}" = "0" ] || [ "${RUN_GID}" = "0" ]; then
-    RUN_UID="1026"
-    RUN_GID="100"
-    UID_IS_A_GUESS="yes"
-fi
-
 cat > "${ENV_FILE}" <<EOF
-# Generated at install time. Edit and restart the package to apply changes.
+# Written at install time from the DSM wizard's answers.
+# Edit and restart the package to change any of them.
 TZ=${TIMEZONE}
-CADENZA_HTTP_PORT=${HTTP_PORT}
 CADENZA_LOG_LEVEL=INFO
-CADENZA_WORKERS=4
 CADENZA_DEFAULT_LOCALE=${LOCALE}
 HOST_MUSIC_PATH=${MUSIC_PATH}
 HOST_QUARANTINE_PATH=${MUSIC_PATH}/.cadenza-quarantine
 HOST_CONFIG_PATH=${CONFIG_PATH}
-CADENZA_UID=${RUN_UID}
-CADENZA_GID=${RUN_GID}
 
-# Provider credentials belong in the app's Settings page, not here. Anything
-# written to this file is readable by the package user and sits in plain text
-# on disk.
+# Provider API keys belong in the app's own Settings page, not here: this file
+# is plain text, while the app stores them 0600 in its config directory.
 EOF
 chmod 640 "${ENV_FILE}" 2>/dev/null || true
 
-# ---------------------------------------------------------------------------
-# Persist the port, then apply it everywhere DSM actually reads one.
-#
-# etc/ is authoritative because it is the only directory that survives an
-# upgrade; target/ is removed and recreated, and wizard variables are not
-# available on upgrade at all without an upgrade_uifile. postupgrade re-applies
-# from here, so the chosen port is not silently reset to 8760 by an update.
-# ---------------------------------------------------------------------------
-printf 'CADENZA_HTTP_PORT=%s
-' "${HTTP_PORT}" > "${ETC_DIR}/port.conf"
+printf 'CADENZA_HTTP_PORT=%s\n' "${HTTP_PORT}" > "${ETC_DIR}/port.conf"
 chmod 644 "${ETC_DIR}/port.conf" 2>/dev/null || true
 
 apply_port "${HTTP_PORT}"
 
 # ---------------------------------------------------------------------------
-# Give the service account access to the folders it was told to manage.
+# The one step that cannot be automated.
 #
-# This is the step whose absence made the package installed-but-useless on a
-# real NAS. DSM runs the service as its own package user -- "cadenza", not the
-# DSM account named in the wizard -- and a Synology shared folder carries no
-# POSIX permissions at all: /volume1/music is mode d--------- and every right
-# comes from an ACL entry. So the package user could not read one byte of the
-# library, and the service refused to start with "config is not writable",
-# which is correct behaviour reporting a packaging defect.
-#
-# Granting the package user an ACL entry is exactly how the other media
-# packages on a Synology do it. On this machine the music share already
-# carried entries for PlexMediaServer, sc-radarr and emby; Cadenza simply
-# never added its own.
-#
-# postinst runs as root, which is what makes this possible here and not in
-# start-stop-status.
+# DSM will not let an unsigned package grant itself access to a shared folder.
+# That is measured, not assumed: requesting root in conf/privilege -- the
+# mechanism Synology's own AudioStation uses -- makes DSM refuse the package at
+# upload with error 4557. There is no root anywhere in this package, and no way
+# for it to set this permission itself.
 # ---------------------------------------------------------------------------
-# The account the SERVICE runs as, from conf/privilege. Deliberately not
-# SYNOPKG_USERNAME: DSM sets that to the DSM user performing the install, so
-# the first version of this granted access to "eg2" -- the human -- and left
-# the service account with none. The install log said "could not grant eg2
-# access", which is how it was caught.
-PKG_USER="cadenza"
-ACL_TOOL="/usr/syno/bin/synoacltool"
-
-# Best effort, and it is expected to fail on a stock DSM. Measured on a
-# DS1821+ running DSM 7.2.1: requesting root for postinst via conf/privilege --
-# the mechanism Synology's own AudioStation uses -- makes DSM refuse the
-# package outright at upload with error 4557, because it is unsigned. So the
-# package genuinely cannot grant itself access to a share, and the instructions
-# printed below are the real mechanism, not a fallback. This is kept because it
-# costs nothing and would work for a signed build.
-grant_access() {
-    _path="$1"
-    _what="$2"
-    [ -d "${_path}" ] || { log_line "NOTE: ${_path} does not exist; skipped ${_what}"; return 0; }
-    if [ ! -x "${ACL_TOOL}" ]; then
-        log_line "NOTE: ${ACL_TOOL} is missing; grant ${PKG_USER} access to ${_path} by hand"
-        return 0
-    fi
-    # Already present? Adding a duplicate entry is harmless but noisy.
-    if "${ACL_TOOL}" -get "${_path}" 2>/dev/null | grep -q "user:${PKG_USER}:allow"; then
-        log_line "${_what}: ${PKG_USER} already has access to ${_path}"
-        return 0
-    fi
-    # rwxpdDaARWc with fd-- inheritance: the same rights DSM grants a user it
-    # adds through Control Panel, so new files and folders inherit it.
-    if "${ACL_TOOL}" -add "${_path}" "user:${PKG_USER}:allow:rwxpdDaARWc--:fd--" >/dev/null 2>&1; then
-        log_line "${_what}: granted ${PKG_USER} read/write on ${_path}"
-    else
-        log_line "ACTION NEEDED: grant ${PKG_USER} access to ${_path}"
-        log_line "  DSM does not let an unsigned package do this for itself."
-        log_line "  Control Panel -> Shared Folder -> select the folder -> Edit"
-        log_line "  -> Permissions -> change the dropdown to 'System internal"
-        log_line "  user' -> tick ${PKG_USER} -> Save. Then restart Cadenza."
-        log_line "  This is the same entry Plex, Emby and Radarr each have."
-    fi
-}
-
-grant_access "${MUSIC_PATH}"  "library"
-grant_access "${CONFIG_PATH}" "config folder"
-
-# ---------------------------------------------------------------------------
-# The compose file the user points Container Manager at.
-# ---------------------------------------------------------------------------
-if [ "${UID_IS_A_GUESS}" = "yes" ]; then
-    UID_NOTE="# WARNING: this uid:gid is a guess. The wizard username was not
-    # recognised and the music folder could not be read. Check it with
-    #     id your-dsm-username
-    # over SSH before starting the project, or Cadenza will write files your
-    # own account cannot read."
-else
-    UID_NOTE="# Resolved at install time from ${UID_SOURCE}."
-fi
-
-cat > "${COMPOSE_FILE}" <<EOF
-# Cadenza - Container Manager project file
-#
-# Generated at install time from the answers given to the DSM wizard, so the
-# paths and user below already match this NAS.
-#
-#     Container Manager -> Project -> Create -> Set path
-#     and point it at the folder holding this file.
-#
-# BEFORE STARTING: the config folder below must already exist and be owned by
-# the account this container runs as. Create it in File Station while signed in
-# as that user. If it does not exist, Docker creates it owned by root and the
-# container cannot write to it -- you will see "/config is not writable" in the
-# project log and the container will restart in a loop.
-#
-# You do NOT need this file. The package runs Cadenza itself -- start it from
-# Package Center and it is ready. This is here only if you would rather run it
-# as a container instead, in which case stop the package first so the two do
-# not both hold the same port and the same library.
-
-services:
-  cadenza:
-    image: ghcr.io/abdelmonemawad/cadenza:latest
-    container_name: cadenza
-    restart: unless-stopped
-    init: true
-
-    ${UID_NOTE}
-    user: "${RUN_UID}:${RUN_GID}"
-
-    environment:
-      TZ: ${TIMEZONE}
-      CADENZA_DEFAULT_LOCALE: ${LOCALE}
-      CADENZA_LOG_LEVEL: INFO
-      CADENZA_WORKERS: "4"
-
-    volumes:
-      # Your music library. Use :ro instead of :rw to look before it touches
-      # anything -- scanning and duplicate analysis work read-only.
-      - ${MUSIC_PATH}:/music:rw
-      # Quarantine. Keep it on the SAME volume as the library, or every
-      # "delete" becomes a full file copy instead of an instant rename.
-      - ${MUSIC_PATH}/.cadenza-quarantine:/quarantine:rw
-      # Database, logs, artwork cache and your API keys. Back this up.
-      #
-      # This must be a folder the account above owns. It used to point inside
-      # the package directory, which is created by the installer running as the
-      # package user -- a DIFFERENT account, with no write access for anyone
-      # else. The container then failed its own "/config is not writable" check
-      # on every start and restart-looped forever.
-      - ${CONFIG_PATH}:/config:rw
-
-    ports:
-      # http://<nas-ip>:${HTTP_PORT}
-      # A password is generated on first run and written to
-      # initial-password.txt in the config folder above; you are made to change
-      # it at first sign-in. Keep this on the LAN regardless: it is plain http.
-      - "${HTTP_PORT}:8760"
-
-    security_opt:
-      - no-new-privileges:true
-
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-    healthcheck:
-      test: ["CMD", "python", "-c",
-             "import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8760/health',timeout=4).status==200 else 1)"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 40s
-EOF
-chmod 644 "${COMPOSE_FILE}" 2>/dev/null || true
-
-# Container Manager's project picker browses shared folders; it cannot reach
-# /var/packages. Copy the file next to the config folder the user named, which
-# is somewhere they can actually select. This is best effort: the package user
-# may well not have write access to that share, which is exactly why the
-# authoritative copy stays in the package directory and the log says so.
-if cp "${COMPOSE_FILE}" "${CONFIG_PATH}/docker-compose.yml" 2>/dev/null; then
-    log_line "Compose file ready at ${CONFIG_PATH}/docker-compose.yml"
-    log_line "Container Manager -> Project -> Create -> Set path -> ${CONFIG_PATH}"
-else
-    log_line "Could not write to ${CONFIG_PATH} (the installer runs as an"
-    log_line "unprivileged account and may not have access to that share)."
-    log_line "Copy the compose file there yourself:"
-    log_line "  ${COMPOSE_FILE}"
-fi
+log_line ""
+log_line "=================================================================="
+log_line " Cadenza ${HTTP_PORT} installed. One step remains, and only you can"
+log_line " do it, because DSM does not let a package grant itself access to"
+log_line " a shared folder."
+log_line ""
+log_line " Give the service account '${PKG_USER}' access to your music:"
+log_line "   Control Panel -> Shared Folder -> select your music folder"
+log_line "   -> Edit -> Permissions"
+log_line "   -> change the dropdown to 'System internal user'"
+log_line "   -> tick ${PKG_USER}   -> Save"
+log_line ""
+log_line " That is the same entry Plex, Emby and Radarr each already have."
+log_line " Nothing here runs as root, and no password is set for you: you"
+log_line " create the account yourself the first time you open Cadenza."
+log_line ""
+log_line " Library : ${MUSIC_PATH}"
+log_line " Config  : ${CONFIG_PATH}"
+log_line " Open    : http://<this-nas>:${HTTP_PORT}"
+log_line "=================================================================="
+log_line ""
 
 exit 0

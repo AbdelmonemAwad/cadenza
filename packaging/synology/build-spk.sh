@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  Builds a DSM 7 compatible .spk package (x86_64, Docker-wrapped).
+#  Builds the standalone DSM 7 package (x86_64). No Docker involved.
 #
 #  Usage:
 #     ./packaging/synology/build-spk.sh
 #
-#  Requirements: bash, tar, coreutils. Docker is no longer needed: the package
-#  does not embed a container image (see issue #2). Runs on Linux, WSL2 or
-#  macOS, or directly on the NAS over SSH.
+#  Requirements: bash, tar, coreutils, curl and python3 (for the icons).
+#  Run on Linux or WSL2 -- the payload contains symlinks Windows cannot create.
 # =============================================================================
 set -euo pipefail
 
@@ -30,15 +29,13 @@ OUT="${DIST_DIR}/${PKG_NAME}-${PKG_ARCH}-${PKG_VERS}.spk"
 info() { printf '\033[1;34m[build]\033[0m %s\n' "$*"; }
 die()  { printf '\033[1;31m[error]\033[0m %s\n' "$*" >&2; exit 1; }
 
-# The package no longer embeds the container image, so building one is not part
-# of packaging any more. SKIP_IMAGE is accepted and ignored so existing
-# invocations keep working.
+# Accepted and ignored; no image is ever built or embedded.
 : "${SKIP_IMAGE:=1}"
 
 # ---- 2) Assemble the package payload -------------------------------------
 info "assembling package payload ..."
 rm -rf "${BUILD_DIR}"
-mkdir -p "${STAGE}"/{docker,bin,doc,ui,conf} "${SPK_DIR}" "${DIST_DIR}"
+mkdir -p "${STAGE}"/{bin,doc,ui,conf} "${SPK_DIR}" "${DIST_DIR}"
 
 # INFO declares dsmuidir="ui", which DSM resolves against target/ -- that is,
 # against the contents of package.tgz. This directory was only ever copied into
@@ -52,16 +49,13 @@ cp -r "${SCRIPT_DIR}/ui/." "${STAGE}/ui/"
 # reason.
 cp "${SCRIPT_DIR}/conf/cadenza.sc" "${STAGE}/conf/"
 
-# The Container Manager project file, so it is available on the NAS.
-cp "${ROOT_DIR}/docker-compose.yml" "${STAGE}/docker/"
+# No compose file. This package runs Cadenza itself; shipping a Docker project
+# file inside it implied the container was still part of how it works.
+# docker-compose.yml stays in the repository for people who prefer to run
+# Cadenza as a container instead -- that is a separate choice, not a dependency.
 cp "${ROOT_DIR}/README.md"    "${STAGE}/doc/" 2>/dev/null || true
 cp "${ROOT_DIR}/README.ar.md" "${STAGE}/doc/" 2>/dev/null || true
 cp "${ROOT_DIR}/LICENSE"      "${STAGE}/doc/" 2>/dev/null || true
-
-# The container image is deliberately NOT bundled. This package does not use
-# Docker at all -- it runs the application directly -- and Container Manager
-# users pull the image from ghcr.io, so embedding it would add a large download
-# that neither path needs.
 
 # ---- The native runtime -----------------------------------------------------
 # Interpreter, dependencies, ffmpeg/ffprobe/fpcalc, the application and the UI.
@@ -170,4 +164,6 @@ info "done:"
 ls -lh "${OUT}"
 echo
 echo "  Install: DSM -> Package Center -> Manual Install -> select the file above"
-echo "  Requires: Container Manager installed and running on the NAS"
+echo "  Requires: nothing. The package carries its own Python, libraries and ffmpeg."
+echo "  After installing, grant the 'cadenza' account access to your music folder:"
+echo "    Control Panel -> Shared Folder -> Edit -> Permissions -> System internal user"

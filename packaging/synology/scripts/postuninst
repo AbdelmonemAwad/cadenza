@@ -3,6 +3,6 @@
 #
 # Firm rule: music files and the quarantine folder are never touched. The
 # user's data outlives the package. DSM removes /var/packages/Cadenza itself,
-# and the application database lives under the Container Manager project's
+# and the application database lives under the config folder chosen at
 # config volume, which is not ours to delete.
 exit 0

@@ -3,7 +3,7 @@ import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
 import { api, subscribeJobs, UNAUTHORIZED_EVENT, type JobEvent } from './api/client'
 import LanguageSwitcher from './components/LanguageSwitcher'
 import { useI18n, type TranslationKey } from './i18n'
-import Login, { ChangePassword } from './pages/Login'
+import Login from './pages/Login'
 import AppleMusic from './pages/AppleMusic'
 import Convert from './pages/Convert'
 import Dashboard from './pages/Dashboard'
@@ -26,7 +26,7 @@ const NAV: { to: string; key: TranslationKey; icon: string }[] = [
   { to: '/settings', key: 'nav.settings', icon: '⚙' },
 ]
 
-type Session = 'checking' | 'anonymous' | 'must-change' | 'ready'
+type Session = 'checking' | 'anonymous' | 'ready'
 
 export default function App() {
   const { t } = useI18n()
@@ -37,12 +37,12 @@ export default function App() {
   // valid; /auth/status only reports whether a password exists at all.
   const probeSession = useCallback(() => {
     api.get('/settings/health')
-      .then(() => setSession((s) => (s === 'must-change' ? s : 'ready')))
+      .then(() => setSession('ready'))
       .catch((err: Error) => {
         // 403 means the session is valid but scoped to the password change.
         // Only a 401 -- or an outright failure to reach the API -- should send
         // the user back to the sign-in screen.
-        setSession(err.message.startsWith('403') ? 'must-change' : 'anonymous')
+        setSession('anonymous')
       })
   }, [])
 
@@ -68,12 +68,13 @@ export default function App() {
     ? Math.round(((active.processed ?? 0) / active.total) * 100)
     : 0
 
-  const signIn = (mustChangePassword: boolean) =>
-    setSession(mustChangePassword ? 'must-change' : 'ready')
+  // Signing in and creating the account both land in the same place: there is
+  // no forced password change any more, because the password was never
+  // generated -- the user chose it.
+  const signIn = () => setSession('ready')
 
   if (session === 'checking') return <div className="empty">{t('app.loading')}</div>
   if (session === 'anonymous') return <Login onSignedIn={signIn} />
-  if (session === 'must-change') return <ChangePassword onDone={() => setSession('ready')} />
 
   return (
     <div className="app">

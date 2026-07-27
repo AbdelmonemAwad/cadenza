@@ -32,7 +32,7 @@ def client(app_client):
 def known_password():
     """Replace whatever first-run generated with a password the tests know."""
     previous = load_credentials()
-    save_credentials(Credentials(password_hash=hash_password(PASSWORD), must_change=False))
+    save_credentials(Credentials(password_hash=hash_password(PASSWORD)))
     yield PASSWORD
     if previous is not None:
         save_credentials(previous)
@@ -268,8 +268,7 @@ def test_password_change_revokes_other_sessions(client, known_password):
     try:
         assert verify_session(other) is None, "old session survived a password change"
     finally:
-        save_credentials(Credentials(password_hash=hash_password(known_password),
-                                     must_change=False))
+        save_credentials(Credentials(password_hash=hash_password(known_password)))
 
 
 def test_logout_everywhere_invalidates_issued_tokens(known_password):
@@ -280,41 +279,88 @@ def test_logout_everywhere_invalidates_issued_tokens(known_password):
     revoke_all_sessions()
     assert verify_session(token) is None
 
+# ------------------------------ First-run setup ------------------------------
 
-def test_first_run_session_cannot_reach_protected_routes(client):
-    """A session issued while the generated password stands is scoped to the
-    password endpoints, so the forced change cannot be skipped by refreshing."""
-    from app.core.auth import SUBJECT_PASSWORD_RESET
-
-    save_credentials(Credentials(password_hash=hash_password(PASSWORD),
-                                 must_change=True))
+def _fresh(client):
+    """Remove the stored account so the next call sees a first-run install."""
+    from app.core.auth import _auth_path
+    previous = load_credentials()
+    _auth_path().unlink(missing_ok=True)
     client.cookies.clear()
-    login = client.post("/api/v1/auth/login", json={"password": PASSWORD})
-    assert login.status_code == 200
-    assert login.json()["must_change_password"] is True
-    assert verify_session(client.cookies.get("cadenza_session")) == SUBJECT_PASSWORD_RESET
-
-    # Everything else refuses it.
-    assert client.get("/api/v1/dashboard/stats").status_code == 403
-    assert client.post("/api/v1/jobs", json={"kind": "scan"}).status_code == 403
-
-    # But the password endpoint is reachable, which is the point.
-    changed = client.post("/api/v1/auth/password", json={
-        "current_password": PASSWORD, "new_password": "a-fresh-long-password"})
-    assert changed.status_code == 200
-    assert client.get("/api/v1/dashboard/stats").status_code == 200
+    return previous
 
 
-def test_initial_password_file_is_removed_once_changed(tmp_path, monkeypatch):
-    from app.core import auth as auth_mod
+def _restore(previous):
+    if previous is not None:
+        save_credentials(previous)
 
-    monkeypatch.setattr(get_settings(), "config_dir", tmp_path, raising=False)
-    generated = auth_mod.ensure_initialised()
-    note = tmp_path / auth_mod.INITIAL_PASSWORD_FILE
-    assert generated and note.is_file()
 
-    auth_mod.set_password("some-other-long-password")
-    assert not note.exists(), "the generated credential must not linger on disk"
+def test_a_fresh_install_reports_it_has_no_account(client):
+    previous = _fresh(client)
+    try:
+        assert client.get("/api/v1/auth/status").json() == {"configured": False}
+    finally:
+        _restore(previous)
+
+
+def test_the_user_chooses_the_username_and_password(client):
+    """Nothing is generated: no factory credential, and no file on disk holding
+    a secret the user did not pick."""
+    previous = _fresh(client)
+    try:
+        created = client.post("/api/v1/auth/setup",
+                              json={"username": "monem", "password": "my-own-password-1"})
+        assert created.status_code == 201, created.text
+        assert created.json()["username"] == "monem"
+
+        # Setup signs you in directly -- no second step, no forced change.
+        assert client.get("/api/v1/dashboard/stats").status_code == 200
+
+        client.cookies.clear()
+        signed_in = client.post("/api/v1/auth/login",
+                                json={"username": "monem", "password": "my-own-password-1"})
+        assert signed_in.status_code == 200
+        assert signed_in.json()["username"] == "monem"
+    finally:
+        _restore(previous)
+
+
+def test_no_initial_password_file_is_ever_written(client):
+    """The previous design generated a password and wrote it to the config
+    volume, where it stayed until the user got around to changing it."""
+    from app.core.auth import INITIAL_PASSWORD_FILE
+
+    previous = _fresh(client)
+    try:
+        client.post("/api/v1/auth/setup",
+                    json={"username": "someone", "password": "a-password-they-chose"})
+        assert not (get_settings().config_dir / INITIAL_PASSWORD_FILE).exists()
+    finally:
+        _restore(previous)
+
+
+def test_the_wrong_username_is_refused(client):
+    previous = _fresh(client)
+    try:
+        client.post("/api/v1/auth/setup",
+                    json={"username": "realuser", "password": "the-real-password-1"})
+        client.cookies.clear()
+        assert client.post("/api/v1/auth/login",
+                           json={"username": "someoneelse",
+                                 "password": "the-real-password-1"}).status_code == 401
+    finally:
+        _restore(previous)
+
+
+def test_setup_cannot_be_used_twice_to_take_over(client, known_password):
+    """Once an account exists, anyone reaching the box must not be able to
+    simply claim it again."""
+    client.cookies.clear()
+    assert client.post("/api/v1/auth/setup",
+                       json={"username": "intruder",
+                             "password": "another-long-one"}).status_code == 409
+    assert client.post("/api/v1/auth/login",
+                       json={"password": known_password}).status_code == 200
 
 
 def test_stale_cookie_does_not_suppress_a_valid_bearer_token(client, known_password):

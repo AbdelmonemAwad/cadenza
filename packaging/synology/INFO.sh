@@ -6,11 +6,7 @@ PKG_NAME="Cadenza"
 PKG_VERS="${PKG_VERS:-$(tr -d ' \t\r\n' < "$(dirname "${BASH_SOURCE[0]}")/../../VERSION")}"
 PKG_ARCH="${PKG_ARCH:-x86_64}"
 
-# DSM 7.2 is the baseline actually targeted. Container Manager (package id
-# "ContainerManager") only exists from 7.2; on 7.0 and 7.1 the equivalent
-# package is called "Docker", so a dependency written for one cannot be
-# satisfied on the other. Declaring 7.2 keeps os_min_ver and the dependency
-# consistent instead of advertising untested 7.0 support. See issue #3.
+# DSM 7.2 is the baseline actually tested, on a DS1821+ running 7.2.1-69057.
 PKG_OS_MIN="${PKG_OS_MIN:-7.2-64561}"
 
 cat <<EOF
@@ -32,7 +28,17 @@ ctl_stop="yes"
 silent_install="no"
 silent_upgrade="no"
 silent_uninstall="no"
-install_dep_packages="ContainerManager>=20.10"
+# NO dependencies. This package is standalone: it carries its own CPython, its
+# own Python libraries and its own ffmpeg/ffprobe/fpcalc, and it runs as an
+# unprivileged package user. It does not need Docker, Container Manager,
+# Python from Package Center, or anything else installed on the NAS.
+#
+# This line used to read install_dep_packages="ContainerManager>=20.10", left
+# over from when the package was a wrapper that asked Container Manager to run
+# the image. Keeping it meant DSM refused to install Cadenza on a NAS without
+# Container Manager -- so the package was not standalone at all, whatever the
+# rest of it did.
+install_dep_packages=""
 install_conflict_packages=""
 thirdparty="yes"
 support_center="no"

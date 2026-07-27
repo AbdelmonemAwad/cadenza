@@ -17,6 +17,7 @@ import hashlib
 import hmac
 import json
 import logging
+import re
 import secrets
 import time
 from dataclasses import dataclass
@@ -51,14 +52,15 @@ MAX_STORED_P = 16
 SESSION_TTL_SECONDS = 60 * 60 * 24 * 14      # 14 days
 MIN_PASSWORD_LENGTH = 10
 
-# Subject of a session issued while the generated first-run password is still
-# in force. current_user refuses it everywhere except the password endpoints,
-# so the forced change cannot be skipped by ignoring the UI.
 SUBJECT_ADMIN = "admin"
+# Retained so sessions issued by an older build are still recognised and can be
+# refused deliberately, rather than being silently treated as full sessions.
 SUBJECT_PASSWORD_RESET = "pwreset"
 
 AUTH_FILE = "auth.json"
 SECRET_FILE = "secret_key"
+# No longer written. Kept so an upgrade from an older install can delete the
+# file that build left behind.
 INITIAL_PASSWORD_FILE = "initial-password.txt"
 
 
@@ -184,8 +186,13 @@ def verify_session(token: str | None) -> str | None:
 
 @dataclass(slots=True)
 class Credentials:
-    password_hash: str
-    must_change: bool = False
+    # Chosen by the user during first-run setup, together with the password.
+    # Cadenza used to generate a random password, write it to a file on the
+    # config volume and force a change at first sign-in. That handed the user a
+    # credential they never asked for and had to go and find, and it meant a
+    # secret sat on disk until they got around to changing it.
+    username: str = "admin"
+    password_hash: str = ""
     session_epoch: int = 0
 
 
@@ -201,7 +208,7 @@ def load_credentials() -> Credentials | None:
         data = json.loads(path.read_text("utf-8"))
         return Credentials(
             password_hash=data["password_hash"],
-            must_change=bool(data.get("must_change", False)),
+            username=str(data.get("username") or "admin"),
             session_epoch=int(data.get("session_epoch", 0)),
         )
     except (OSError, ValueError, KeyError):
@@ -212,22 +219,22 @@ def load_credentials() -> Credentials | None:
 def save_credentials(creds: Credentials) -> None:
     write_private(_auth_path(), json.dumps({
         "password_hash": creds.password_hash,
-        "must_change": creds.must_change,
+        "username": creds.username,
         "session_epoch": creds.session_epoch,
     }, separators=(",", ":")).encode())
 
-    # Once a real password is set the generated one is no longer a credential
-    # and must not linger on the config volume.
-    if not creds.must_change:
-        _remove_quietly(get_settings().config_dir / INITIAL_PASSWORD_FILE)
+    # Left over from the generated-password design: if an install from an older
+    # build still has that file, it is a live credential sitting on the config
+    # volume and is removed now that a real account exists.
+    _remove_quietly(get_settings().config_dir / INITIAL_PASSWORD_FILE)
 
 
 def set_password(new_password: str) -> Credentials:
     """Store a new password and invalidate every existing session."""
     previous = load_credentials()
     creds = Credentials(
+        username=previous.username if previous else "admin",
         password_hash=hash_password(new_password),
-        must_change=False,
         # The epoch bump is what makes a password change actually end other
         # sessions, instead of leaving them valid for the rest of their TTL.
         session_epoch=(previous.session_epoch + 1) if previous else 1,
@@ -244,27 +251,38 @@ def revoke_all_sessions() -> None:
     save_credentials(creds)
 
 
-def ensure_initialised() -> str | None:
-    """Create a random first-run password if none is configured.
+MIN_USERNAME_LENGTH = 3
+MAX_USERNAME_LENGTH = 32
+_USERNAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{2,31}$")
 
-    Returns the generated password so the caller can surface it once, or None
-    when credentials already exist. A fixed default would be worse than no
-    authentication: it looks protected while every install shares one credential.
+
+def is_configured() -> bool:
+    """True once the user has created their account."""
+    return load_credentials() is not None
+
+
+def validate_username(username: str) -> str:
+    name = (username or "").strip()
+    if not _USERNAME_RE.match(name):
+        raise AuthError(
+            f"the username must be {MIN_USERNAME_LENGTH}-{MAX_USERNAME_LENGTH} "
+            "characters, start with a letter or digit, and contain only "
+            "letters, digits, dot, dash or underscore")
+    return name
+
+
+def create_account(username: str, password: str) -> None:
+    """First-run setup. Refuses once an account exists.
+
+    There is deliberately no generated password and no initial-password file.
+    The user chooses both the username and the password the first time they
+    open Cadenza, and nothing is ever written to disk that they did not choose.
     """
     if load_credentials() is not None:
-        return None
-
-    password = secrets.token_urlsafe(15)
-    save_credentials(Credentials(password_hash=hash_password(password),
-                                 must_change=True, session_epoch=0))
-
-    # Written 0600 into the config volume because NAS users routinely cannot
-    # read container logs and would otherwise be locked out of their own
-    # install. Deleted automatically once a real password is set.
-    write_private(get_settings().config_dir / INITIAL_PASSWORD_FILE, (
-        "Cadenza initial password\n"
-        "========================\n\n"
-        f"    {password}\n\n"
-        "Sign in and change it. This file is removed automatically once you do.\n"
-    ).encode())
-    return password
+        raise AuthError("an account already exists")
+    name = validate_username(username)
+    if len(password) < MIN_PASSWORD_LENGTH:
+        raise AuthError(f"the password must be at least {MIN_PASSWORD_LENGTH} characters")
+    save_credentials(Credentials(username=name,
+                                 password_hash=hash_password(password),
+                                 session_epoch=0))

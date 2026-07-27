@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import api_router
 from app.config import APP_NAME, APP_VERSION, get_settings
-from app.core.auth import ensure_initialised
+from app.core.auth import is_configured
 from app.db.base import engine, init_db
 from app.logging_conf import setup_logging
 from app.services.job_runner import runner
@@ -29,19 +29,15 @@ async def lifespan(app: FastAPI):
     # that dropped the modes, are brought down to 0600 before anything is served.
     s.tighten_secret_files()
 
-    # Generate a first-run password before serving anything. A fixed default
-    # would be worse than none: it looks protected while every install shares
-    # the same credential.
-    if ensure_initialised():
-        # The password itself is deliberately NOT logged. setup_logging has
-        # already attached a rotating file handler on the config volume, which
-        # is a shared folder on a NAS: writing the credential there would leave
-        # a world-readable copy in five rotated files long after first run.
-        # It is written 0600 to initial-password.txt instead.
+    # No credential is created here. Cadenza used to generate a random password,
+    # write it to the config volume and force a change at first sign-in; the
+    # user now chooses their own username and password the first time they open
+    # the interface, so nothing they did not choose is ever stored.
+    if not is_configured():
         log.warning("=" * 62)
-        log.warning("First run: an administrator password has been generated.")
-        log.warning("Read it from %s", s.config_dir / "initial-password.txt")
-        log.warning("Sign in and change it; that file is then removed.")
+        log.warning("First run: open Cadenza and create your account.")
+        log.warning("You choose the username and the password; nothing is")
+        log.warning("generated and no default credential exists.")
         log.warning("=" * 62)
 
     await init_db()

@@ -146,8 +146,7 @@ def test_purge_api_ignores_a_force_query_parameter(app_client):
     from app.core.auth import Credentials, hash_password, save_credentials
 
     password = "purge-test-password"
-    save_credentials(Credentials(password_hash=hash_password(password),
-                                 must_change=False))
+    save_credentials(Credentials(password_hash=hash_password(password)))
     app_client.cookies.clear()
     assert app_client.post("/api/v1/auth/login",
                            json={"password": password}).status_code == 200

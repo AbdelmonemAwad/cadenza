@@ -392,6 +392,13 @@ const en = {
   },
 
   auth: {
+    username: 'Username',
+    createAccount: 'Create account',
+    creating: 'Creating…',
+    setupIntro: 'This is a fresh install. Choose the username and password you want — Cadenza generates nothing and has no default credential.',
+    setupNote: 'Stored only on this NAS, hashed with scrypt.',
+    usernameTooShort: 'The username must be at least {min} characters.',
+    alreadyConfigured: 'An account already exists on this install. Sign in instead.',
     title: 'Sign in to Cadenza',
     subtitle: 'This instance manages files you cannot re-download.',
     password: 'Password',

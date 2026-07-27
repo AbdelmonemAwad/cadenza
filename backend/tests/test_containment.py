@@ -170,8 +170,7 @@ _API_PASSWORD = "containment-test-password"
 def api(app_client):
     from app.core.auth import Credentials, hash_password, save_credentials
 
-    save_credentials(Credentials(password_hash=hash_password(_API_PASSWORD),
-                                 must_change=False))
+    save_credentials(Credentials(password_hash=hash_password(_API_PASSWORD)))
     app_client.cookies.clear()
     assert app_client.post("/api/v1/auth/login",
                            json={"password": _API_PASSWORD}).status_code == 200

@@ -15,7 +15,9 @@ from app.api.deps import SESSION_COOKIE, user_or_password_reset
 from app.core.auth import (
     MIN_PASSWORD_LENGTH,
     SUBJECT_ADMIN,
-    SUBJECT_PASSWORD_RESET,
+    AuthError,
+    create_account,
+    is_configured,
     issue_session,
     load_credentials,
     revoke_all_sessions,
@@ -31,7 +33,14 @@ router = APIRouter()
 SESSION_MAX_AGE = 60 * 60 * 24 * 14
 
 
+class SetupRequest(BaseModel):
+    """First-run account creation. Both values are the user's choice."""
+    username: str = Field(min_length=3, max_length=32)
+    password: str = Field(min_length=MIN_PASSWORD_LENGTH, max_length=1024)
+
+
 class LoginRequest(BaseModel):
+    username: str = Field(default="", max_length=32)
     password: str = Field(max_length=1024)     # bound the work an attacker can request
 
 
@@ -53,21 +62,54 @@ def _set_session_cookie(response: Response, token: str) -> None:
 
 @router.get("/status")
 async def status_endpoint() -> dict:
-    """Whether the instance has credentials yet. Safe to call unauthenticated.
+    """Whether an account exists yet. Safe to call unauthenticated.
 
-    Deliberately does not reveal whether the generated password is still in
-    force: that would tell an unauthenticated caller the box is still on its
-    factory credential. The UI learns it from the login response instead.
+    The UI uses this to decide between the setup form and the sign-in form.
+    It reveals only that a fresh install has not been claimed, which the setup
+    page makes obvious anyway.
     """
-    return {"configured": load_credentials() is not None}
+    return {"configured": is_configured()}
+
+
+@router.post("/setup", status_code=status.HTTP_201_CREATED)
+async def setup(body: SetupRequest, request: Request, response: Response) -> dict:
+    """Create the account, once, on a fresh install.
+
+    Cadenza generates nothing. There is no default password, no factory
+    credential and no file containing a secret the user did not choose -- the
+    first person to open the interface picks the username and the password.
+
+    Rate limited like sign-in: this endpoint is reachable without a session
+    until it has been used, so it must not be a free way to hammer the box.
+    """
+    key = client_key(request)
+    decision = login_limiter.reserve(key)
+    if decision.blocked:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS, "too many attempts",
+            headers={"Retry-After": str(int(decision.retry_after) + 1)})
+
+    try:
+        await asyncio.to_thread(create_account, body.username, body.password)
+    except AuthError as exc:
+        # Already configured is a conflict, not a validation error: it means
+        # somebody else claimed this install first.
+        code = (status.HTTP_409_CONFLICT if "already exists" in str(exc)
+                else status.HTTP_400_BAD_REQUEST)
+        raise HTTPException(code, str(exc)) from None
+
+    login_limiter.record_success(key)
+    log.warning("account created for %s", body.username)
+    _set_session_cookie(response, issue_session(SUBJECT_ADMIN))
+    return {"created": True, "username": body.username}
 
 
 @router.post("/login")
 async def login(body: LoginRequest, request: Request, response: Response) -> dict:
     creds = load_credentials()
     if creds is None:
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE,
-                            "authentication is not initialised yet")
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            "no account yet: create one at /api/v1/auth/setup")
 
     # Reserved before the hash is computed. This both keeps a throttled caller
     # from occupying the thread pool and closes the window that made the
@@ -89,18 +131,19 @@ async def login(body: LoginRequest, request: Request, response: Response) -> dic
     # scrypt is deliberately expensive (~100 ms). Running it inline would block
     # the event loop for that long, so an unauthenticated caller could stall
     # the whole server just by hammering this endpoint.
+    # The password is checked even when the username is wrong, so the response
+    # time does not reveal which of the two was incorrect.
     ok = await asyncio.to_thread(verify_password, body.password, creds.password_hash)
+    if body.username and body.username.strip().lower() != creds.username.lower():
+        ok = False
     if not ok:
         # The attempt is already counted; nothing to add here.
         log.warning("failed sign-in attempt from %s", key)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid credentials")
     login_limiter.record_success(key)
 
-    # While the generated password is still in force the session is scoped to
-    # the password endpoints only; every other route rejects it.
-    subject = SUBJECT_PASSWORD_RESET if creds.must_change else SUBJECT_ADMIN
-    _set_session_cookie(response, issue_session(subject))
-    return {"authenticated": True, "must_change_password": creds.must_change}
+    _set_session_cookie(response, issue_session(SUBJECT_ADMIN))
+    return {"authenticated": True, "username": creds.username}
 
 
 @router.post("/logout")

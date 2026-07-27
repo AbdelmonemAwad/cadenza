@@ -8,9 +8,8 @@
 #  /usr/bin/python3 is 3.8 and this codebase requires 3.11 or newer, which is
 #  why the interpreter travels with the package rather than being borrowed.
 #
-#  The previous version started nothing at all: the package could only hand the
-#  user a compose file to paste into Container Manager. Docker remains a fully
-#  supported way to run Cadenza -- it is now a choice, not the only option.
+#  Nothing here runs as root and nothing here needs Docker. The package
+#  declares no dependencies at all.
 # =============================================================================
 set -u
 
@@ -76,8 +75,7 @@ start_daemon() {
     fi
 
     # Checked here so the reason is readable, rather than letting the app die
-    # on its first write. This is the failure the Docker path used to hit as an
-    # unexplained restart loop.
+    # on its first write.
     _me="$(id -un 2>/dev/null || echo cadenza)"
     mkdir -p "${CADENZA_CONFIG_DIR}" 2>/dev/null || true
     if [ ! -w "${CADENZA_CONFIG_DIR}" ]; then

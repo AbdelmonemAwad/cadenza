@@ -1,5 +1,5 @@
 #!/bin/sh
 # Pre-uninstall. Nothing to tear down: this package does not start a service.
-# A container started through Container Manager is managed there and is
+# Nothing external is touched on uninstall. The service is stopped and
 # deliberately left untouched.
 exit 0

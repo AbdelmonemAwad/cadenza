@@ -20,8 +20,7 @@ def client(app_client):
     Every /api/v1 route now requires a session, so these sign in first; the
     unauthenticated behaviour is asserted in test_auth.py.
     """
-    save_credentials(Credentials(password_hash=hash_password(_PASSWORD),
-                                 must_change=False))
+    save_credentials(Credentials(password_hash=hash_password(_PASSWORD)))
     app_client.cookies.clear()
     response = app_client.post("/api/v1/auth/login", json={"password": _PASSWORD})
     assert response.status_code == 200, response.text
