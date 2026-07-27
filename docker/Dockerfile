@@ -76,6 +76,11 @@ RUN groupadd -g ${CADENZA_GID} -o cadenza 2>/dev/null || true \
     && chown -R ${CADENZA_UID}:${CADENZA_GID} \
          /config /quarantine /app /var/lib/nginx /var/log/nginx /run
 
+# Default to the unprivileged user so an invocation that forgets `user:` is
+# still not root. Compose overrides this with the uid that owns the music
+# share; this only sets the floor.
+USER ${CADENZA_UID}:${CADENZA_GID}
+
 VOLUME ["/config", "/music", "/quarantine"]
 EXPOSE 8760
 
