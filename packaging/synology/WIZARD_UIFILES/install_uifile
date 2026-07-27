@@ -1,10 +1,10 @@
 [
     {
-        "step_title": "Cadenza setup",
+        "step_title": "Cadenza setup - read this first",
         "items": [
             {
                 "type": "textfield",
-                "desc": "Path to your music library on the NAS (an existing shared folder)",
+                "desc": "MUSIC LIBRARY. An existing shared folder; Cadenza reads every audio file under it. When you ask it to, it also renames, moves, retags and converts them. Nothing is ever deleted outright: removals go to a quarantine folder and can be restored for 30 days. Scanning and duplicate analysis never write anything, so you can look before granting write access.",
                 "subitems": [
                     {
                         "key": "wizard_music_path",
@@ -22,7 +22,7 @@
             },
             {
                 "type": "textfield",
-                "desc": "Port for the web interface. The DSM icon follows this port. If DSM's firewall is on, allow this port yourself under Control Panel → Security → Firewall.",
+                "desc": "WEB PORT. The DSM desktop icon follows this. If DSM's firewall is enabled you may need to allow this port yourself under Control Panel -> Security -> Firewall; the install log says so if it could not do it for you. Package Center's own Open button always uses 8760.",
                 "subitems": [
                     {
                         "key": "wizard_http_port",
@@ -40,7 +40,7 @@
             },
             {
                 "type": "textfield",
-                "desc": "Folder for the database, logs and settings. It must already exist and be owned by the account below — create it in File Station first. Do not use a folder inside the music library.",
+                "desc": "CONFIG FOLDER for the database, logs, settings and API keys - back this up. It MUST already exist and be writable by the account named below: create it in File Station first, signed in as that account. If it is missing or not writable, Cadenza refuses to start and says so in its log rather than failing silently. Do not put it inside the music library.",
                 "subitems": [
                     {
                         "key": "wizard_config_path",
@@ -58,7 +58,7 @@
             },
             {
                 "type": "textfield",
-                "desc": "Timezone, interface language, and the user that will own written files",
+                "desc": "RUN AS. Cadenza runs as this DSM account, so every file it writes belongs to that account and it can only touch what that account can reach. Getting it wrong is the most common install problem. Leave it empty to use whoever owns the music folder, which is usually right. Timezone affects log and schedule times; language sets the interface (English or Arabic).",
                 "subitems": [
                     {
                         "key": "wizard_timezone",
