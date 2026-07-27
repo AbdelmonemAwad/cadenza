@@ -1,6 +1,11 @@
-#!/bin/sh
+#!/bin/bash
 # Container entrypoint: nginx (static UI + reverse proxy) and uvicorn (API).
-set -eu
+#
+# bash, not sh. On Debian /bin/sh is dash, whose `wait` builtin has no -n
+# option, so supervising two children the way this script does is a bash
+# feature. The shebang said sh while the body used bash syntax, which aborted
+# startup in every configuration.
+set -euo pipefail
 
 log() { echo "[cadenza] $*"; }
 
@@ -68,9 +73,19 @@ start_api &
 API_PID=$!
 
 # If either half dies the container exits, and Docker's restart policy brings
-# the whole thing back cleanly rather than leaving a half-running service.
-wait -n $NGINX_PID $API_PID
-EXIT=$?
+# the whole thing back cleanly rather than leaving a half-running service
+# where nginx answers but the API behind it is gone.
+#
+# `wait -n` returns as soon as the FIRST child exits, which is what we want;
+# plain `wait` would block until both had. The if/else captures the real exit
+# status: writing `wait -n ... || true` would satisfy `set -e` but overwrite
+# the child's code with 0, reporting a crash as a clean shutdown.
+if wait -n "$NGINX_PID" "$API_PID"; then
+    EXIT=0
+else
+    EXIT=$?
+fi
 log "a component exited with status $EXIT - stopping the container"
-kill -TERM $NGINX_PID $API_PID 2>/dev/null || true
-exit $EXIT
+kill -TERM "$NGINX_PID" "$API_PID" 2>/dev/null || true
+wait 2>/dev/null || true
+exit "$EXIT"
