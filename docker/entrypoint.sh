@@ -15,7 +15,6 @@ fi
 : "${CADENZA_CONFIG_DIR:=/config}"
 : "${CADENZA_MUSIC_ROOT:=/music}"
 : "${CADENZA_QUARANTINE_ROOT:=/quarantine}"
-: "${CADENZA_HTTP_PORT:=8760}"
 : "${CADENZA_API_WORKERS:=1}"
 
 mkdir -p "$CADENZA_CONFIG_DIR/logs" "$CADENZA_CONFIG_DIR/cache/artwork" "$CADENZA_QUARANTINE_ROOT"
@@ -27,6 +26,14 @@ if [ ! -w "$CADENZA_CONFIG_DIR" ]; then
     log "ERROR: $CADENZA_CONFIG_DIR is not writable - check the folder permissions on the NAS"
     log "       (the container runs as UID:GID $(id -u):$(id -g))"
     exit 1
+fi
+
+# Running as root would write root-owned files into the user's music share,
+# which they then cannot manage from File Station. Warn loudly rather than
+# silently doing damage.
+if [ "$(id -u)" = "0" ]; then
+    log "WARNING: running as root. Set 'user:' in docker-compose.yml to the"
+    log "         account that owns your music folder (id <dsm-user>)."
 fi
 
 command -v ffmpeg >/dev/null 2>&1 || log "WARNING: ffmpeg missing, conversion disabled"
@@ -46,8 +53,12 @@ if [ "${CADENZA_ROLE:-all}" = "api" ]; then
     exec start_api
 fi
 
-log "starting nginx on :$CADENZA_HTTP_PORT and uvicorn on :8000"
-sed -i "s/listen  *[0-9]\+;/listen ${CADENZA_HTTP_PORT};/" /etc/nginx/conf.d/cadenza.conf
+# nginx always listens on 8760 inside the container. It used to be rewritten
+# here with `sed -i`, but that file is owned root:root, so the rewrite failed
+# for any non-root user -- meaning the container could only ever start as root,
+# the exact opposite of the intended posture. Changing the published port is
+# Docker's job: edit the `ports:` mapping in docker-compose.yml.
+log "starting nginx on :8760 and uvicorn on :8000"
 nginx -g 'daemon off;' &
 NGINX_PID=$!
 

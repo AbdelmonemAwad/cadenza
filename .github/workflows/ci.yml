@@ -153,13 +153,37 @@ jobs:
             'test -s /app/www/index.html && ls /app/www/assets | head -5'
 
       # The container must run as a normal user on the NAS, never root, or it
-      # will write root-owned files into the user's music share.
-      - name: Verify it runs as a non-root user
-        timeout-minutes: 3
+      # writes root-owned files into the user's music share.
+      #
+      # This deliberately boots the real entrypoint instead of overriding it.
+      # The previous version of this check ran `--entrypoint id`, which skipped
+      # entrypoint.sh entirely and so could not fail for the reason that
+      # actually mattered: a root-owned file the startup script tried to
+      # rewrite made non-root startup impossible. See issue #10.
+      - name: Verify the service actually starts as a non-root user
+        timeout-minutes: 5
         run: |
-          uid=$(docker run --rm --user 1029:100 --entrypoint id cadenza/cadenza:ci -u)
-          echo "container uid: $uid"
-          test "$uid" = "1029"
+          mkdir -p /tmp/cfg /tmp/q /tmp/music && chmod 777 /tmp/cfg /tmp/q /tmp/music
+          docker run -d --name cadenza-nonroot \
+            --user 1029:100 \
+            -v /tmp/cfg:/config -v /tmp/q:/quarantine -v /tmp/music:/music \
+            -p 18760:8760 cadenza/cadenza:ci
+
+          for i in $(seq 1 45); do
+            if curl -fsS http://127.0.0.1:18760/health >/dev/null 2>&1; then
+              echo "service answered /health as uid $(docker exec cadenza-nonroot id -u)"
+              curl -fsS http://127.0.0.1:18760/health; echo
+              docker exec cadenza-nonroot id -u | grep -qx 1029
+              docker rm -f cadenza-nonroot >/dev/null
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "::error::container did not become healthy as a non-root user"
+          docker logs cadenza-nonroot
+          docker rm -f cadenza-nonroot >/dev/null
+          exit 1
 
   # Container Manager pulls the image from here. Without a published image the
   # compose file references a tag that exists only on the build machine, so a
