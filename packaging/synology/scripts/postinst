@@ -21,13 +21,7 @@ COMPOSE_FILE="${VAR_DIR}/docker-compose.yml"
 # Values collected by the installation wizard, with sane fallbacks.
 MUSIC_PATH="${wizard_music_path:-/volume1/music}"
 CONFIG_PATH="${wizard_config_path:-/volume1/docker/cadenza}"
-# Fixed, not asked for. The desktop icon (ui/config), the firewall entry
-# (conf/cadenza.sc) and INFO.sh all hardcode 8760, and postinst cannot rewrite
-# metadata DSM has already read. A wizard port therefore published the
-# container on one port while the icon opened another and the firewall opened a
-# third. Anyone who genuinely needs a different port edits the compose file,
-# where the change is visible.
-HTTP_PORT="8760"
+HTTP_PORT="${wizard_http_port:-8760}"
 TIMEZONE="${wizard_timezone:-UTC}"
 LOCALE="${wizard_locale:-en}"
 RUN_USER="${wizard_run_user:-}"
@@ -64,6 +58,12 @@ case "${CONFIG_PATH}" in
        echo "cadenza: config path contains a character that would corrupt the" >&2
        echo "         generated compose file; falling back to the default" >&2
        CONFIG_PATH="/volume1/docker/cadenza" ;;
+esac
+# 1024-65535. Below 1024 needs privilege the service does not have, and a
+# non-numeric value would be interpolated straight into the compose file.
+case "${HTTP_PORT}" in
+    ''|*[!0-9]*) HTTP_PORT="8760" ;;
+    *) [ "${HTTP_PORT}" -ge 1024 ] 2>/dev/null && [ "${HTTP_PORT}" -le 65535 ] 2>/dev/null || HTTP_PORT="8760" ;;
 esac
 case "${LOCALE}" in
     en|ar) : ;;
@@ -157,6 +157,38 @@ CADENZA_GID=${RUN_GID}
 # on disk.
 EOF
 chmod 640 "${ENV_FILE}" 2>/dev/null || true
+
+# ---------------------------------------------------------------------------
+# Make the DSM-side port entries agree with the chosen port.
+#
+# The desktop icon follows it on its own: ui/config declares allowAltPort, so
+# DSM rewrites the portal URL when the package reports a different port. The
+# firewall service definition does not -- conf/cadenza.sc is read at install
+# time with whatever port it was built with. It is rewritten here when the
+# installed copy is reachable and writable, and the user is told to open the
+# port by hand when it is not, rather than being left to discover a blocked
+# port with no explanation.
+# ---------------------------------------------------------------------------
+if [ "${HTTP_PORT}" != "8760" ]; then
+    sc_updated="no"
+    for sc in "/usr/local/etc/services.d/cadenza.sc"               "/var/packages/${SYNOPKG_PKGNAME:-Cadenza}/conf/cadenza.sc"; do
+        [ -w "${sc}" ] || continue
+        # Rewrite in place via a temp file: a half-written .sc would leave DSM
+        # with an unparseable service definition.
+        if sed "s|^dst\.ports=.*|dst.ports=\"${HTTP_PORT}/tcp\"|" "${sc}" > "${sc}.new" 2>/dev/null            && mv "${sc}.new" "${sc}" 2>/dev/null; then
+            sc_updated="yes"
+        else
+            rm -f "${sc}.new" 2>/dev/null || true
+        fi
+    done
+    if [ "${sc_updated}" = "yes" ]; then
+        log_line "Firewall service definition updated to ${HTTP_PORT}/tcp."
+    else
+        log_line "NOTE: the firewall entry still names 8760/tcp and could not be"
+        log_line "updated from here. If DSM's firewall is enabled, allow"
+        log_line "${HTTP_PORT}/tcp under Control Panel -> Security -> Firewall."
+    fi
+fi
 
 # ---------------------------------------------------------------------------
 # The compose file the user points Container Manager at.

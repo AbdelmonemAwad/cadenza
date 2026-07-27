@@ -22,6 +22,24 @@
             },
             {
                 "type": "textfield",
+                "desc": "Port for the web interface. The DSM icon follows this port. If DSM's firewall is on, allow this port yourself under Control Panel → Security → Firewall.",
+                "subitems": [
+                    {
+                        "key": "wizard_http_port",
+                        "desc": "Port",
+                        "defaultValue": "8760",
+                        "validator": {
+                            "allowBlank": false,
+                            "regex": {
+                                "expr": "/^(102[4-9]|10[3-9][0-9]|1[1-9][0-9]{2}|[2-9][0-9]{3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])$/",
+                                "errorText": "Enter a port between 1024 and 65535"
+                            }
+                        }
+                    }
+                ]
+            },
+            {
+                "type": "textfield",
                 "desc": "Folder for the database, logs and settings. It must already exist and be owned by the account below — create it in File Station first. Do not use a folder inside the music library.",
                 "subitems": [
                     {
