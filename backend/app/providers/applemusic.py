@@ -19,7 +19,19 @@ from app.providers.base import BaseProvider, ProviderError, TrackMetadata
 log = logging.getLogger(__name__)
 
 API = "https://api.music.apple.com/v1"
-TOKEN_TTL = 60 * 60 * 24 * 150       # 150 days; Apple's ceiling is 180
+
+# One hour, not the 150 days this used to mint. Apple's ceiling is 180 days,
+# but a ceiling is not a recommendation: the token is signed with the user's
+# Apple Developer private key, identifies their team, and cannot be revoked
+# individually -- recovery from a leak means rotating the key in the developer
+# portal. The server re-mints transparently, and the browser refetches, so the
+# only thing a long lifetime bought was a longer window for a copy to be useful
+# to somebody else.
+TOKEN_TTL = 60 * 60
+
+# Re-mint slightly early so a request never goes out with a token that expires
+# mid-flight. Must stay well below TOKEN_TTL or the cache never hits.
+TOKEN_REFRESH_MARGIN = 5 * 60
 
 
 class AppleMusicProvider(BaseProvider):
@@ -44,7 +56,7 @@ class AppleMusicProvider(BaseProvider):
 
     def developer_token(self) -> str:
         now = time.time()
-        if self._dev_token and now < self._dev_exp - 3600:
+        if self._dev_token and now < self._dev_exp - TOKEN_REFRESH_MARGIN:
             return self._dev_token
         s = self.settings
         key_path = Path(s.apple_private_key_path)

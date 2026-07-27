@@ -17,13 +17,13 @@ import hashlib
 import hmac
 import json
 import logging
-import os
 import secrets
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
 from app.config import get_settings
+from app.core.secretfile import write_private
 
 log = logging.getLogger(__name__)
 
@@ -122,35 +122,8 @@ def _secret_key() -> bytes:
             log.warning("session key file is unreadable or malformed; regenerating")
 
     key = secrets.token_bytes(48)
-    _write_private(path, key.hex().encode("ascii"))
+    write_private(path, key.hex().encode("ascii"))
     return key
-
-
-def _write_private(path: Path, data: bytes) -> None:
-    """Write a file that is never even briefly readable by anyone else.
-
-    Creating then chmod-ing leaves a window at the process umask, which matters
-    on a NAS where the config volume is usually a shared folder. O_EXCL on a
-    unique temp name means the mode argument is honoured rather than silently
-    ignored for a pre-existing file, and fchmod covers a permissive umask.
-    """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.{os.getpid()}.{secrets.token_hex(4)}.tmp")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    try:
-        # Belt and braces against a permissive umask. POSIX-only, and absent on
-        # Windows where developers run the test suite; the O_EXCL create mode
-        # above already carries the permission on the platform that ships.
-        if hasattr(os, "fchmod"):
-            os.fchmod(fd, 0o600)
-        os.write(fd, data)
-        # Survive a NAS power cut: without this the rename can land while the
-        # contents are still in the page cache, leaving an empty credential
-        # file that silently re-bootstraps a new password.
-        os.fsync(fd)
-    finally:
-        os.close(fd)
-    os.replace(tmp, path)
 
 
 def _remove_quietly(path: Path) -> None:
@@ -237,7 +210,7 @@ def load_credentials() -> Credentials | None:
 
 
 def save_credentials(creds: Credentials) -> None:
-    _write_private(_auth_path(), json.dumps({
+    write_private(_auth_path(), json.dumps({
         "password_hash": creds.password_hash,
         "must_change": creds.must_change,
         "session_epoch": creds.session_epoch,
@@ -288,7 +261,7 @@ def ensure_initialised() -> str | None:
     # Written 0600 into the config volume because NAS users routinely cannot
     # read container logs and would otherwise be locked out of their own
     # install. Deleted automatically once a real password is set.
-    _write_private(get_settings().config_dir / INITIAL_PASSWORD_FILE, (
+    write_private(get_settings().config_dir / INITIAL_PASSWORD_FILE, (
         "Cadenza initial password\n"
         "========================\n\n"
         f"    {password}\n\n"
