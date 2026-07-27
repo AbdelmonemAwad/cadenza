@@ -257,9 +257,34 @@ jobs:
       - name: Install packaging prerequisites
         run: python -m pip install --upgrade pip pillow
 
-      # No image build here any more: the package does not embed one.
-      - name: Build .spk
-        run: bash packaging/synology/build-spk.sh
+      # The native payload ships the built UI, so it has to exist before the
+      # package is assembled. build-native-payload.sh fails rather than
+      # producing a package that serves a blank page.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build the frontend bundle
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund && npm run build
+
+      # The interpreter and the ffmpeg build are large and versioned, so they
+      # are worth caching between runs. The key covers both, since either can
+      # change independently.
+      - name: Cache the downloaded runtime
+        uses: actions/cache@v4
+        with:
+          path: build/cache
+          key: native-runtime-${{ hashFiles('packaging/synology/build-native-payload.sh', 'backend/requirements.txt') }}
+
+      # NATIVE=1 is the real package: interpreter, dependencies, ffmpeg and the
+      # app. The payload build refuses to finish unless the staged tree can
+      # actually import the application and every preset codec is present, so
+      # this step failing means the package would not have worked on the NAS.
+      - name: Build .spk (native runtime)
+        run: NATIVE=1 bash packaging/synology/build-spk.sh
 
       # A .spk DSM cannot open is worse than no .spk, so check the archive
       # layout and the checksum the installer verifies.
@@ -296,6 +321,26 @@ jobs:
             echo "MISSING from package.tgz: ${proto} (protocol-file points here)"; exit 1; }
           echo "  present in target/: ${proto}"
           python3 -c "import json;json.load(open('/tmp/payload/${uidir}/config'))"             || { echo "ui/config is not valid JSON"; exit 1; }
+
+          # The runtime the package cannot start without. Each of these was
+          # absent from the package for its whole life before the native build.
+          for required in python/bin/python3 app/app/main.py www/index.html                           bin/ffmpeg bin/ffprobe bin/fpcalc; do
+            test -e "/tmp/payload/${required}" || {
+              echo "MISSING runtime component: ${required}"; exit 1; }
+          done
+          echo "  runtime present: interpreter, app, UI, ffmpeg, ffprobe, fpcalc"
+          test -x /tmp/payload/python/bin/python3 || { echo "interpreter not executable"; exit 1; }
+
+          # Boot the payload exactly as start-stop-status does. This is the
+          # difference between "the archive has the right shape" and "the
+          # service would actually come up on the NAS".
+          PYTHONHOME=/tmp/payload/python           PYTHONPATH=/tmp/payload/app:/tmp/payload/lib           PYTHONNOUSERSITE=1           LD_LIBRARY_PATH=/tmp/payload/python/lib:/tmp/payload/ffmpeg-lib           CADENZA_CONFIG_DIR=$(mktemp -d) CADENZA_QUARANTINE_ROOT=$(mktemp -d)           CADENZA_WWW_DIR=/tmp/payload/www           /tmp/payload/python/bin/python3 -c "
+          from app.main import create_app
+          app = create_app()
+          paths = {r.path for r in app.routes}
+          assert '/health' in paths
+          print(f'  payload boots: {len(paths)} routes')
+          " || { echo "::error::the packaged payload cannot start"; exit 1; }
           # The control scripts must be executable and LF-terminated, or DSM
           # fails them with an opaque error at install time.
           for s in /tmp/spk/scripts/*; do
