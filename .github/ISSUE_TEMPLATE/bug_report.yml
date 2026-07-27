@@ -1,0 +1,73 @@
+name: Bug report
+description: Something is not working as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing, please check the app's **Activity Log** page and the
+        package log at `/var/packages/Cadenza/var/logs/package.log`.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you expect, and what happened instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Go to Duplicates
+        2. Click Analyse
+        3. ...
+    validations:
+      required: true
+
+  - type: input
+    id: nas-model
+    attributes:
+      label: NAS model
+      placeholder: DS1821+
+    validations:
+      required: true
+
+  - type: input
+    id: dsm-version
+    attributes:
+      label: DSM version
+      placeholder: 7.2.1-69057 Update 5
+    validations:
+      required: true
+
+  - type: input
+    id: cadenza-version
+    attributes:
+      label: Cadenza version
+      placeholder: 1.0.0-0001
+    validations:
+      required: true
+
+  - type: dropdown
+    id: language
+    attributes:
+      label: Interface language
+      options: [English, العربية]
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: Paste the log excerpt. It is rendered as code, no backticks needed.
+      render: shell
+
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Confirmations
+      options:
+        - label: I have removed any API keys or personal paths from the logs above
+          required: true

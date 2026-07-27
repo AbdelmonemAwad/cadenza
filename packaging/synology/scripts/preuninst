@@ -1,0 +1,18 @@
+#!/bin/sh
+# Stop and remove the container before the package is deleted.
+set -u
+
+CONTAINER="cadenza"
+DOCKER=""
+for candidate in /usr/local/bin/docker /usr/bin/docker \
+                 /var/packages/ContainerManager/target/usr/bin/docker \
+                 /var/packages/Docker/target/usr/bin/docker; do
+    [ -x "${candidate}" ] && DOCKER="${candidate}" && break
+done
+
+if [ -n "${DOCKER}" ]; then
+    "${DOCKER}" stop -t 30 "${CONTAINER}" >/dev/null 2>&1 || true
+    "${DOCKER}" rm -f "${CONTAINER}" >/dev/null 2>&1 || true
+fi
+
+exit 0

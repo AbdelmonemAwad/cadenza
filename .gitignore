@@ -1,0 +1,51 @@
+# ---- Build output ----
+build/
+dist/
+*.spk
+*.tar
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# ---- Node ----
+node_modules/
+frontend/dist/
+npm-debug.log*
+.vite/
+
+# ---- Runtime data (never commit a user's library index) ----
+*.db
+*.db-wal
+*.db-shm
+_dev*/
+backend/_dev*/
+
+# ---- Secrets: API keys and the Apple Music signing key ----
+.env
+.env.local
+*.p8
+apple_user_token.json
+settings.json
+secrets.json
+
+# ---- Editors / OS ----
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- Synology artefacts that can appear inside a mounted library ----
+@eaDir/
+#recycle/

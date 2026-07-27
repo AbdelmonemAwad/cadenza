@@ -1,0 +1,21 @@
+# Normalise line endings in the repository.
+* text=auto eol=lf
+
+# These run on DSM's shell. A CRLF line ending makes them fail with an opaque
+# error, so force LF regardless of the contributor's platform or core.autocrlf.
+*.sh            text eol=lf
+packaging/synology/scripts/*    text eol=lf
+docker/entrypoint.sh            text eol=lf
+Makefile        text eol=lf
+
+# Binary assets: never touch these.
+*.png           binary
+*.jpg           binary
+*.ico           binary
+*.spk           binary
+*.tar           binary
+*.p8            binary
+
+# Keep generated lockfiles out of diffs and language statistics.
+frontend/package-lock.json  linguist-generated=true -diff
+docs/**         linguist-documentation=true

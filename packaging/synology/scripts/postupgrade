@@ -1,0 +1,29 @@
+#!/bin/sh
+# Restore state after an upgrade and load the new image.
+set -u
+
+PKG_NAME="Cadenza"
+PKG_DIR="/var/packages/${PKG_NAME}"
+STAGE="/tmp/cadenza-upgrade-stage"
+
+if [ -d "${STAGE}" ]; then
+    mkdir -p "${PKG_DIR}/etc" "${PKG_DIR}/var"
+    [ -f "${STAGE}/cadenza.env" ] && cp -a "${STAGE}/cadenza.env" "${PKG_DIR}/etc/"
+    [ -d "${STAGE}/config" ] && cp -a "${STAGE}/config" "${PKG_DIR}/var/"
+    rm -rf "${STAGE}"
+fi
+
+DOCKER=""
+for candidate in /usr/local/bin/docker /usr/bin/docker \
+                 /var/packages/ContainerManager/target/usr/bin/docker \
+                 /var/packages/Docker/target/usr/bin/docker; do
+    [ -x "${candidate}" ] && DOCKER="${candidate}" && break
+done
+
+mkdir -p "${PKG_DIR}/var/logs"
+if [ -n "${DOCKER}" ] && [ -f "${PKG_DIR}/target/image/cadenza-image.tar" ]; then
+    "${DOCKER}" load -i "${PKG_DIR}/target/image/cadenza-image.tar" \
+        >> "${PKG_DIR}/var/logs/upgrade.log" 2>&1 || true
+fi
+
+exit 0

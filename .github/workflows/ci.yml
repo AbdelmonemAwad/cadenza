@@ -1,0 +1,133 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.11', '3.12']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+
+      # ffmpeg and fpcalc are what the engine shells out to; without them the
+      # probe and fingerprint paths would be skipped rather than exercised.
+      - name: Install audio tooling
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg libchromaprint-tools
+
+      - name: Install dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Lint
+        working-directory: backend
+        run: ruff check app tests
+
+      - name: Test
+        working-directory: backend
+        run: pytest -v
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
+
+      # Catches missing translation keys: the Arabic catalogue is typed against
+      # the English one, so a gap fails the build here.
+      - name: Type check
+        working-directory: frontend
+        run: npx tsc --noEmit
+
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image (amd64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: cadenza/cadenza:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Verify the runtime has its tools and the app boots
+        run: |
+          docker run --rm cadenza/cadenza:ci ffmpeg -version | head -1
+          docker run --rm cadenza/cadenza:ci fpcalc -version
+          docker run --rm -e CADENZA_CONFIG_DIR=/tmp/cfg cadenza/cadenza:ci \
+            python -c "from app.main import create_app; create_app(); print('app imports OK')"
+
+  package:
+    name: Synology .spk
+    runs-on: ubuntu-latest
+    needs: [docker]
+    if: github.event_name == 'push'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Install packaging prerequisites
+        run: pip install pillow
+
+      - name: Build image
+        run: docker build --platform linux/amd64 -f docker/Dockerfile -t cadenza/cadenza:1.0.0 .
+
+      - name: Build .spk
+        run: SKIP_IMAGE=1 bash packaging/synology/build-spk.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cadenza-spk
+          path: dist/*.spk
+          retention-days: 30

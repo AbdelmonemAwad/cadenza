@@ -1,0 +1,8 @@
+{
+    "port-config": {
+        "protocol-file": "conf/cadenza.sc"
+    },
+    "usr-local-linker": {
+        "bin": ["bin"]
+    }
+}

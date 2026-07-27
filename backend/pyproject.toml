@@ -1,0 +1,40 @@
+[project]
+name = "cadenza"
+version = "1.0.0"
+description = "Music library curation, deduplication and tagging for Synology NAS"
+readme = "../README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+filterwarnings = ["ignore::DeprecationWarning"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+exclude = [".venv", "build", "dist"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM"]
+ignore = [
+    "E712",   # `== False` is required by SQLAlchemy filter expressions
+    "B008",   # FastAPI's Depends() in a default is the documented pattern
+    "SIM108", # a ternary is not always clearer than if/else
+    "UP042",  # (str, Enum) is the established SQLAlchemy pattern; switching
+              # persisted enums to StrEnum changes their base class for no gain
+]
+
+[tool.ruff.lint.per-file-ignores]
+# The FIELD_TRUST table is column-aligned on purpose: reading trust values
+# down a column is the point, and wrapping it would destroy that.
+"app/providers/aggregator.py" = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]

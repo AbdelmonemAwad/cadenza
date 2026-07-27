@@ -1,0 +1,66 @@
+# Used directly by Container Manager, or by the package's start-stop-status script.
+name: cadenza
+
+services:
+  cadenza:
+    image: cadenza/cadenza:1.0.0
+    container_name: cadenza
+    restart: unless-stopped
+    init: true
+
+    # DSM runs containers as root by default. Force a normal user so files
+    # written into the music share stay owned by their owner.
+    # Find the right values over SSH with: id <your-dsm-user>
+    user: "${CADENZA_UID:-1029}:${CADENZA_GID:-100}"
+
+    environment:
+      TZ: "${TZ:-UTC}"
+      CADENZA_MUSIC_ROOT: /music
+      CADENZA_QUARANTINE_ROOT: /quarantine
+      CADENZA_CONFIG_DIR: /config
+      CADENZA_HTTP_PORT: "8760"
+      CADENZA_LOG_LEVEL: "${CADENZA_LOG_LEVEL:-INFO}"
+      CADENZA_WORKERS: "${CADENZA_WORKERS:-4}"
+      CADENZA_DEFAULT_LOCALE: "${CADENZA_DEFAULT_LOCALE:-en}"
+      CADENZA_ACOUSTID_API_KEY: "${ACOUSTID_API_KEY:-}"
+      CADENZA_DISCOGS_TOKEN: "${DISCOGS_TOKEN:-}"
+      CADENZA_LASTFM_API_KEY: "${LASTFM_API_KEY:-}"
+      CADENZA_MUSICBRAINZ_CONTACT: "${MUSICBRAINZ_CONTACT:-admin@example.com}"
+      CADENZA_APPLE_TEAM_ID: "${APPLE_TEAM_ID:-}"
+      CADENZA_APPLE_KEY_ID: "${APPLE_KEY_ID:-}"
+      CADENZA_APPLE_STOREFRONT: "${APPLE_STOREFRONT:-us}"
+
+    volumes:
+      - "${HOST_MUSIC_PATH:-/volume1/music}:/music:rw"
+      - "${HOST_QUARANTINE_PATH:-/volume1/music/.cadenza-quarantine}:/quarantine:rw"
+      - "${HOST_CONFIG_PATH:-/volume1/docker/cadenza/config}:/config:rw"
+
+    ports:
+      - "${CADENZA_HTTP_PORT:-8760}:8760"
+
+    # A DS1821+ (Ryzen V1500B) or DVA3221 handles this comfortably while still
+    # serving files.
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 3G
+        reservations:
+          memory: 512M
+
+    security_opt:
+      - no-new-privileges:true
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8760/health',timeout=4).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s

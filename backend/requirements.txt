@@ -1,0 +1,28 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.0
+sqlalchemy==2.0.36
+aiosqlite==0.20.0
+greenlet==3.1.1
+
+# --- audio and tags ---
+mutagen==1.47.0
+pyacoustid==1.3.0
+audioread==3.0.1
+
+# --- http and providers ---
+httpx[http2]==0.28.1
+tenacity==9.0.0
+musicbrainzngs==0.7.1
+
+# --- Apple Music developer token (ES256) ---
+pyjwt[crypto]==2.10.1
+cryptography==44.0.0
+
+# --- scheduling and utilities ---
+apscheduler==3.11.0
+python-multipart==0.0.20
+rapidfuzz==3.11.0
+unidecode==1.3.8
+pillow==11.1.0

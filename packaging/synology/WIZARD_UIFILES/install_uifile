@@ -1,0 +1,64 @@
+[
+    {
+        "step_title": "Cadenza setup",
+        "items": [
+            {
+                "type": "textfield",
+                "desc": "Path to your music library on the NAS (an existing shared folder)",
+                "subitems": [
+                    {
+                        "key": "wizard_music_path",
+                        "desc": "Library path",
+                        "defaultValue": "/volume1/music",
+                        "validator": {
+                            "allowBlank": false,
+                            "regex": {
+                                "expr": "/^\\/volume[0-9]+\\/[^\\s]+$/",
+                                "errorText": "Must start with /volume1/ — for example /volume1/music"
+                            }
+                        }
+                    }
+                ]
+            },
+            {
+                "type": "textfield",
+                "desc": "Web interface port",
+                "subitems": [
+                    {
+                        "key": "wizard_http_port",
+                        "desc": "Port",
+                        "defaultValue": "8760",
+                        "validator": {
+                            "allowBlank": false,
+                            "regex": {
+                                "expr": "/^[0-9]{4,5}$/",
+                                "errorText": "Enter a valid port number (1024-65535)"
+                            }
+                        }
+                    }
+                ]
+            },
+            {
+                "type": "textfield",
+                "desc": "Timezone, interface language, and the user that will own written files",
+                "subitems": [
+                    {
+                        "key": "wizard_timezone",
+                        "desc": "Timezone (e.g. Europe/London, Asia/Riyadh)",
+                        "defaultValue": "UTC"
+                    },
+                    {
+                        "key": "wizard_locale",
+                        "desc": "Default language: en or ar",
+                        "defaultValue": "en"
+                    },
+                    {
+                        "key": "wizard_run_user",
+                        "desc": "DSM username (leave empty to use the music folder's owner)",
+                        "defaultValue": ""
+                    }
+                ]
+            }
+        ]
+    }
+]

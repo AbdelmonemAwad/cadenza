@@ -1,0 +1,23 @@
+#!/bin/sh
+# Preserve state across an upgrade.
+set -u
+
+PKG_NAME="Cadenza"
+PKG_DIR="/var/packages/${PKG_NAME}"
+STAGE="/tmp/cadenza-upgrade-stage"
+CONTAINER="cadenza"
+
+DOCKER=""
+for candidate in /usr/local/bin/docker /usr/bin/docker \
+                 /var/packages/ContainerManager/target/usr/bin/docker \
+                 /var/packages/Docker/target/usr/bin/docker; do
+    [ -x "${candidate}" ] && DOCKER="${candidate}" && break
+done
+[ -n "${DOCKER}" ] && "${DOCKER}" rm -f "${CONTAINER}" >/dev/null 2>&1 || true
+
+rm -rf "${STAGE}"
+mkdir -p "${STAGE}"
+[ -f "${PKG_DIR}/etc/cadenza.env" ] && cp -a "${PKG_DIR}/etc/cadenza.env" "${STAGE}/"
+[ -d "${PKG_DIR}/var/config" ] && cp -a "${PKG_DIR}/var/config" "${STAGE}/"
+
+exit 0
