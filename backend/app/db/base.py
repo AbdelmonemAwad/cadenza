@@ -1,6 +1,7 @@
 """Async SQLite engine and session plumbing."""
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -13,6 +14,8 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.orm import DeclarativeBase
 
 from app.config import get_settings
+
+log = logging.getLogger(__name__)
 
 
 class Base(DeclarativeBase):
@@ -66,9 +69,33 @@ async def get_session() -> AsyncIterator[AsyncSession]:
 
 async def init_db() -> None:
     from app.db import models  # noqa: F401  -- registers the tables
+    from app.db.migrations import SCHEMA_VERSION, back_up_if_pending, upgrade
+
+    # Before anything touches the schema, and deliberately outside the
+    # transaction below: SQLite refuses VACUUM inside one. Returns immediately
+    # when there is nothing pending, so an ordinary start pays nothing.
+    await back_up_if_pending(engine, _settings.db_path)
 
     async with engine.begin() as conn:
+        # Whether this database already holds someone's library decides
+        # everything below: a new one is created at the current schema and
+        # stamped, an existing one is migrated. Checked before create_all,
+        # which would otherwise make every database look new.
+        existing = await conn.execute(text(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='tracks'"))
+        fresh = existing.first() is None
+
+        # Still create_all: it is what builds a new database, and on an existing
+        # one it adds tables introduced since -- which needs no migration,
+        # because a table that is absent is created whole. Columns are the case
+        # it cannot handle, and those are what MIGRATIONS is for.
         await conn.run_sync(Base.metadata.create_all)
+
+        version = await upgrade(conn, fresh=fresh)
+        if not fresh:
+            log.info("database schema v%d (this build understands v%d)",
+                     version, SCHEMA_VERSION)
+
         # FTS5 index for fast library search
         await conn.execute(text(
             "CREATE VIRTUAL TABLE IF NOT EXISTS track_fts USING fts5("

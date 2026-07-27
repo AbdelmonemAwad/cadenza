@@ -4,7 +4,7 @@
         "items": [
             {
                 "type": "textfield",
-                "desc": "MUSIC LIBRARY. An existing shared folder; Cadenza reads every audio file under it. When you ask it to, it also renames, moves, retags and converts them. Nothing is ever deleted outright: removals go to a quarantine folder and can be restored for 30 days. Scanning and duplicate analysis never write anything, so you can look before granting write access.",
+                "desc": "MUSIC LIBRARY. An existing shared folder; Cadenza reads every audio file under it. When you ask it to, it also renames, moves, retags and converts them. Nothing is ever deleted outright: removals go to a quarantine folder and can be restored for 30 days. Scanning and duplicate analysis never write anything, so you can look before granting write access. AFTER INSTALLING you must give Cadenza's service account access to this folder yourself - Control Panel, Shared Folder, Edit, Permissions, switch the dropdown to 'System internal user', tick 'cadenza', Save. DSM does not allow an unsigned package to grant itself access to a share, so this is the one step the installer cannot do for you. It is the same entry Plex, Emby and Radarr each have.",
                 "subitems": [
                     {
                         "key": "wizard_music_path",
@@ -40,17 +40,17 @@
             },
             {
                 "type": "textfield",
-                "desc": "CONFIG FOLDER for the database, logs, settings and API keys - back this up. It must already exist; create it in File Station first. The installer grants Cadenza's own service account access to it, so you do not need to set permissions yourself. Do not put it inside the music library.",
+                "desc": "DATA FOLDER for the database, logs, settings and API keys. LEAVE THIS EMPTY unless you have a reason not to: Cadenza then keeps its data inside its own package folder, which its service account can always write and which DSM preserves when you update the package. If you do name a folder it must already exist, and you must grant the 'cadenza' account access to it the same way as the music folder - the installer cannot do that for you. Do not put it inside the music library. Once Cadenza has written data to a folder it keeps using that folder; changing this later does not move anything, and Cadenza will tell you so rather than start on an empty database.",
                 "subitems": [
                     {
                         "key": "wizard_config_path",
-                        "desc": "Config folder",
-                        "defaultValue": "/volume1/docker/cadenza",
+                        "desc": "Data folder (leave empty for the package's own folder)",
+                        "defaultValue": "",
                         "validator": {
-                            "allowBlank": false,
+                            "allowBlank": true,
                             "regex": {
-                                "expr": "/^\\/volume[0-9]+\\/[^\\s:\"'`$\\\\]+$/",
-                                "errorText": "Must start with /volume1/ and contain no spaces, colons or quotes — for example /volume1/docker/cadenza"
+                                "expr": "/^$|^\\/volume[0-9]+\\/[^\\s:\"'`$\\\\]+$/",
+                                "errorText": "Leave empty, or give a path starting with /volume1/ containing no spaces, colons or quotes"
                             }
                         }
                     }
@@ -58,7 +58,7 @@
             },
             {
                 "type": "textfield",
-                "desc": "TIMEZONE and LANGUAGE for the interface (English or Arabic). The DSM account below is used only if you later run Cadenza as a container instead - the package itself runs as its own service account, and the installer grants that account access to the folders above.",
+                "desc": "TIMEZONE and LANGUAGE for the interface (English or Arabic). Cadenza runs as its own unprivileged service account and needs no DSM user, no root and no other package. You create the Cadenza username and password yourself the first time you open it; nothing is generated and there is no default credential.",
                 "subitems": [
                     {
                         "key": "wizard_timezone",
@@ -69,11 +69,6 @@
                         "key": "wizard_locale",
                         "desc": "Default language: en or ar",
                         "defaultValue": "en"
-                    },
-                    {
-                        "key": "wizard_run_user",
-                        "desc": "DSM username (leave empty to use the music folder's owner)",
-                        "defaultValue": ""
                     }
                 ]
             }

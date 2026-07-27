@@ -4,6 +4,63 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.2.0] - 2026-07-28
+
+### Fixed
+
+- **Updating never starts you from scratch.** The directory holding the
+  database, your account and your API keys used to be re-derived on every single
+  start, from a path the install wizard recorded. That is a data-loss trap, and
+  it was armed on a real DS1821+: the wizard had written
+  `/volume1/docker/cadenza`, the service account could not reach it, so Cadenza
+  quietly used its own folder instead and put everything there. Nothing said so.
+  The moment that folder became writable — the user creates it, or ticks the
+  service account on the share — the next restart would have switched to it,
+  found it empty, and shown the create-your-account screen as though every scan
+  and every setting had been lost. The directory is now decided once and
+  remembered, in `etc/data-dir.conf` and again in `var/`, and it is read back
+  before anything else. Six scenarios are exercised against DSM's own shell.
+- **Cadenza refuses to start rather than pretend your data is gone.** If the
+  remembered directory cannot be reached — volume not mounted, permission
+  withdrawn — starting anyway would offer a fresh account over an empty database
+  while the real one sat intact a directory away, and a user who accepts that
+  offer starts writing into the wrong place. It now stops and says exactly what
+  is unreachable and what to check.
+- **A failed upgrade stage no longer loses the account.** `preupgrade` gives up
+  quietly if it cannot create its staging directory and `postupgrade` only
+  checks that the directory exists, not that anything landed in it. The record
+  of where the data lives is therefore kept a second time under `var/`, which
+  DSM preserves on its own with no staging involved.
+- **The install wizard stopped misdescribing itself.** Its data-folder default
+  was `/volume1/docker/cadenza`, left from when the package wrapped Docker, and
+  it could not be left blank — so the zero-configuration path that `postinst`
+  was written around was unreachable. It also claimed the installer would grant
+  the service account access to the folder, which an unsigned DSM package cannot
+  do. The default is now empty (the package's own folder, always writable,
+  preserved across updates), and both permission steps are stated plainly. The
+  dead `wizard_run_user` field, which nothing has read since the Docker version,
+  is gone.
+- **`settings.json` can no longer override locked settings.** The API refuses to
+  write `config_dir`, `music_root` and the tool paths; the same file is read
+  straight back into the settings object at startup, so until now a value that
+  the API rejected took effect anyway if it reached the file by any other route.
+  `config_dir` is the one that matters: it decides where the database lives.
+
+### Added
+
+- **Schema migrations.** `create_all` adds missing tables and looks at nothing
+  else, so a new column on an existing model reached every fresh install and no
+  database that already held a library — and CI could never see it, because CI
+  always starts empty. The only person who found out was someone who already had
+  data. There is now a `schema_version`, an ordered migration table, and a
+  guard test that builds a database at the frozen baseline schema, migrates it,
+  and requires the result to match what the models produce. Adding a column
+  without a migration now fails in CI, by name.
+- **A backup before every migration**, taken with `VACUUM INTO` rather than a
+  file copy: the database runs in WAL mode, so copying only the `.db` would
+  produce a backup missing everything committed since the last checkpoint, and
+  it would look perfectly valid.
+
 ## [2.1.3] - 2026-07-28
 
 ### Fixed
