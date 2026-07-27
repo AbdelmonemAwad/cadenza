@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +11,11 @@ from app.db.models import QuarantineItem
 from app.services.job_runner import runner
 
 router = APIRouter()
+
+
+class PurgeRequest(BaseModel):
+    # Defaults to a dry run: the caller has to ask for the destructive form.
+    dry_run: bool = True
 
 
 @router.get("")
@@ -58,7 +64,14 @@ async def restore_group(group_id: int, s: AsyncSession = Depends(get_session)) -
 
 
 @router.post("/purge")
-async def purge(force: bool = False, dry_run: bool = True) -> dict:
-    """Permanently delete expired items. Blocked unless hard_delete_allowed is on."""
-    job_id = await runner.submit("quarantine_purge", {"force": force}, dry_run=dry_run)
-    return {"job_id": job_id, "dry_run": dry_run}
+async def purge(body: PurgeRequest = Body(default=PurgeRequest())) -> dict:
+    """Permanently delete expired items. Blocked unless hard_delete_allowed is on.
+
+    There is no `force` option. It used to exist as a query parameter that was
+    passed straight to the purge routine and skipped the `hard_delete_allowed`
+    check, so a single GET-shaped request destroyed the user's files regardless
+    of how the setting was configured. Enabling permanent deletion is now a
+    deliberate settings change.
+    """
+    job_id = await runner.submit("quarantine_purge", {}, dry_run=body.dry_run)
+    return {"job_id": job_id, "dry_run": body.dry_run}

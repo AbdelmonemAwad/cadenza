@@ -23,6 +23,7 @@ from app.db.models import (
     AuditLog,
     DupAction,
     DuplicateGroup,
+    DuplicateMember,
     Job,
     JobState,
     Track,
@@ -251,40 +252,62 @@ async def handle_dedup_apply(job_id: int, params: dict, dry_run: bool,
     moved = failed = freed = 0
     errors: list[str] = []
 
+    # The plan is read in one pass and each move is then applied in its own
+    # transaction. The whole loop used to share a single transaction, so a
+    # failure on file 40 rolled back the rows for files 1-39 that were already
+    # sitting in quarantine on disk: no QuarantineItem, no audit entry, and
+    # nothing for the user to restore from. A file and the record of where it
+    # went now commit together or not at all.
     async with session_scope() as s:
         stmt = select(DuplicateGroup).where(DuplicateGroup.resolved == False)  # noqa: E712
         if group_ids:
             stmt = stmt.where(DuplicateGroup.id.in_(group_ids))
         groups = list((await s.execute(stmt)).scalars().all())
-        manager = QuarantineManager(s)
-        total = sum(len(g.members) for g in groups)
-        done = 0
-
+        plan: list[tuple[int, str, int, int, str, int]] = []
         for g in groups:
-            if runner.is_cancelled(job_id):
-                break
             for m in g.members:
-                done += 1
-                if done % 20 == 0:
-                    await runner.progress(job_id, done, total, f"group {g.id}")
                 action = m.proposed_action
                 action = action if isinstance(action, str) else action.value
                 if action != DupAction.QUARANTINE.value:
                     continue
-                if dry_run:
-                    moved += 1
-                    freed += m.track.size_bytes or 0
-                    continue
-                try:
-                    await manager.quarantine(m.track, reason=f"duplicate:{g.kind}",
-                                             group_id=g.id, job_id=job_id)
-                    m.applied = True
-                    moved += 1
-                    freed += m.track.size_bytes or 0
-                except Exception as exc:
-                    failed += 1
-                    errors.append(f"{m.track.path}: {exc}")
-            if not dry_run:
+                plan.append((g.id, g.kind, m.id, m.track.id,
+                             m.track.path, m.track.size_bytes or 0))
+
+    total = len(plan)
+    if dry_run:
+        return {"dry_run": True, "quarantined": total, "failed": 0,
+                "freed_bytes": sum(row[5] for row in plan), "errors": []}
+
+    touched_groups: set[int] = set()
+    for done, (group_id, kind, member_id, track_id, path, size) in enumerate(plan, 1):
+        if runner.is_cancelled(job_id):
+            break
+        if done % 20 == 0:
+            await runner.progress(job_id, done, total, f"group {group_id}")
+        try:
+            async with session_scope() as s:
+                track = await s.get(Track, track_id)
+                if track is None:
+                    raise RuntimeError("track disappeared before it could be moved")
+                await QuarantineManager(s).quarantine(
+                    track, reason=f"duplicate:{kind}", group_id=group_id, job_id=job_id)
+                member = await s.get(DuplicateMember, member_id)
+                if member is not None:
+                    member.applied = True
+            moved += 1
+            freed += size
+            touched_groups.add(group_id)
+        except Exception as exc:
+            failed += 1
+            errors.append(f"{path}: {exc}")
+
+    # Only groups whose members were actually dealt with are closed. Marking a
+    # group resolved when every move in it failed would hide the failure.
+    if touched_groups:
+        async with session_scope() as s:
+            for g in (await s.execute(
+                select(DuplicateGroup).where(DuplicateGroup.id.in_(touched_groups))
+            )).scalars().all():
                 g.resolved = True
 
     return {"dry_run": dry_run, "quarantined": moved, "failed": failed,
@@ -392,16 +415,44 @@ async def handle_convert(job_id: int, params: dict, dry_run: bool,
         stmt = stmt.limit(int(params.get("limit", 200)))
         tracks = list((await s.execute(stmt)).scalars().all())
 
+    by_path = {t.path: t.id for t in tracks}
     items = [(Path(t.path), preset) for t in tracks if Path(t.path).is_file()]
     await runner.progress(job_id, 0, len(items), f"preset={preset}")
     results = await transcoder.batch(items, dry_run=dry_run,
                                      keep_original=keep_original, dest_dir=dest_dir)
+
+    # keep_original=false used to mean the transcoder called src.unlink(): the
+    # one deletion in the whole project that skipped quarantine, ignored
+    # hard_delete_allowed and left no audit entry. A failed tag copy or a
+    # subtly bad conversion took the only copy of the track with it. The
+    # replaced source is now moved to quarantine like any other removal, so it
+    # is restorable for the retention period.
+    replaced = quarantine_failed = 0
+    for r in results:
+        if not (r.ok and r.source_replaced) or dry_run:
+            continue
+        track_id = by_path.get(r.src)
+        try:
+            async with session_scope() as s:
+                track = await s.get(Track, track_id) if track_id else None
+                if track is None:
+                    raise RuntimeError("source track is no longer in the library")
+                await QuarantineManager(s).quarantine(
+                    track, reason=f"converted:{preset}", job_id=job_id)
+            replaced += 1
+        except Exception as exc:
+            # The conversion itself succeeded and the new file is on disk, so
+            # this is not a job failure: the original simply stays put.
+            quarantine_failed += 1
+            log.warning("kept original %s, could not quarantine it: %s", r.src, exc)
 
     converted = sum(1 for r in results if r.ok)
     return {
         "dry_run": dry_run, "preset": preset, "total": len(results),
         "converted": converted, "failed": len(results) - converted,
         "saved_bytes": sum(r.saved_bytes for r in results),
+        "sources_quarantined": replaced,
+        "sources_kept_after_error": quarantine_failed,
         "items": [{"src": r.src, "dst": r.dst, "ok": r.ok, "error": r.error,
                    "src_bytes": r.src_bytes, "dst_bytes": r.dst_bytes}
                   for r in results[:200]],
@@ -414,7 +465,7 @@ async def handle_purge(job_id: int, params: dict, dry_run: bool,
         manager = QuarantineManager(s)
         if dry_run:
             return {"dry_run": True, **(await manager.stats())}
-        return await manager.purge_expired(force=bool(params.get("force")))
+        return await manager.purge_expired()
 
 
 runner = JobRunner()
