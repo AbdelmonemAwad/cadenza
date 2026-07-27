@@ -5,6 +5,10 @@
 # to install a third-party package that asks for root. That means this script
 # may only write inside the package's own directories -- no chown, no touching
 # the user's shared folders, no docker.
+#
+# What it produces is a docker-compose.yml filled in with the answers from the
+# install wizard, so the Container Manager step is paste-and-go instead of
+# hand-editing paths, a port and a uid the user has to look up over SSH.
 set -u
 
 PKG_NAME="Cadenza"
@@ -12,14 +16,60 @@ PKG_DIR="/var/packages/${PKG_NAME}"
 VAR_DIR="${PKG_DIR}/var"
 ETC_DIR="${PKG_DIR}/etc"
 ENV_FILE="${ETC_DIR}/cadenza.env"
+COMPOSE_FILE="${VAR_DIR}/docker-compose.yml"
 
 # Values collected by the installation wizard, with sane fallbacks.
 MUSIC_PATH="${wizard_music_path:-/volume1/music}"
 HTTP_PORT="${wizard_http_port:-8760}"
 TIMEZONE="${wizard_timezone:-UTC}"
 LOCALE="${wizard_locale:-en}"
+RUN_USER="${wizard_run_user:-}"
 
 mkdir -p "${VAR_DIR}/config" "${VAR_DIR}/logs" "${ETC_DIR}"
+
+# ---------------------------------------------------------------------------
+# Work out the uid:gid the container should run as.
+#
+# This is the setting people get wrong, and getting it wrong means every file
+# Cadenza writes is owned by an account that cannot read the music share. The
+# wizard asks for a DSM username; if it was left blank, fall back to whoever
+# owns the music folder, which is the right answer in almost every case.
+# ---------------------------------------------------------------------------
+RUN_UID=""
+RUN_GID=""
+
+if [ -n "${RUN_USER}" ]; then
+    # Read /etc/passwd directly rather than calling id(1): the package user may
+    # not be allowed to query another account through NSS.
+    entry=$(awk -F: -v u="${RUN_USER}" '$1 == u { print $3 ":" $4; exit }' /etc/passwd 2>/dev/null)
+    if [ -n "${entry}" ]; then
+        RUN_UID="${entry%%:*}"
+        RUN_GID="${entry##*:}"
+    fi
+fi
+
+if [ -z "${RUN_UID}" ] && [ -d "${MUSIC_PATH}" ]; then
+    RUN_UID=$(stat -c '%u' "${MUSIC_PATH}" 2>/dev/null || echo "")
+    RUN_GID=$(stat -c '%g' "${MUSIC_PATH}" 2>/dev/null || echo "")
+fi
+
+# Last resort. 1026:100 is the first account DSM creates plus the "users"
+# group. It is a guess, and the generated file says so rather than presenting
+# it as though it had been looked up.
+UID_IS_A_GUESS="no"
+if [ -z "${RUN_UID}" ] || [ -z "${RUN_GID}" ]; then
+    RUN_UID="1026"
+    RUN_GID="100"
+    UID_IS_A_GUESS="yes"
+fi
+
+# Never generate a compose file that runs the container as root, whatever the
+# wizard said or the folder reported.
+if [ "${RUN_UID}" = "0" ] || [ "${RUN_GID}" = "0" ]; then
+    RUN_UID="1026"
+    RUN_GID="100"
+    UID_IS_A_GUESS="yes"
+fi
 
 cat > "${ENV_FILE}" <<EOF
 # Generated at install time. Edit and restart the package to apply changes.
@@ -31,11 +81,91 @@ CADENZA_DEFAULT_LOCALE=${LOCALE}
 HOST_MUSIC_PATH=${MUSIC_PATH}
 HOST_QUARANTINE_PATH=${MUSIC_PATH}/.cadenza-quarantine
 HOST_CONFIG_PATH=${VAR_DIR}/config
+CADENZA_UID=${RUN_UID}
+CADENZA_GID=${RUN_GID}
 
 # Provider credentials belong in the app's Settings page, not here. Anything
-# written to this file is readable by the package user and appears in plain
-# text on disk.
+# written to this file is readable by the package user and sits in plain text
+# on disk.
 EOF
 chmod 640 "${ENV_FILE}" 2>/dev/null || true
+
+# ---------------------------------------------------------------------------
+# The compose file the user points Container Manager at.
+# ---------------------------------------------------------------------------
+if [ "${UID_IS_A_GUESS}" = "yes" ]; then
+    UID_NOTE="# WARNING: this uid:gid is a guess. The wizard username was not
+    # recognised and the music folder could not be read. Check it with
+    #     id your-dsm-username
+    # over SSH before starting the project, or Cadenza will write files your
+    # own account cannot read."
+else
+    UID_NOTE="# Resolved at install time from ${RUN_USER:-the owner of ${MUSIC_PATH}}."
+fi
+
+cat > "${COMPOSE_FILE}" <<EOF
+# Cadenza - Container Manager project file
+#
+# Generated at install time from the answers given to the DSM wizard, so the
+# paths, port and user below already match this NAS.
+#
+#     Container Manager -> Project -> Create -> Set path
+#     and point it at the folder holding this file.
+#
+# On DSM 7 an unsigned package cannot reach the Docker daemon, which is why the
+# package cannot start the container for you. See
+# https://github.com/AbdelmonemAwad/cadenza/issues/2
+
+services:
+  cadenza:
+    image: ghcr.io/abdelmonemawad/cadenza:latest
+    container_name: cadenza
+    restart: unless-stopped
+    init: true
+
+    ${UID_NOTE}
+    user: "${RUN_UID}:${RUN_GID}"
+
+    environment:
+      TZ: ${TIMEZONE}
+      CADENZA_DEFAULT_LOCALE: ${LOCALE}
+      CADENZA_LOG_LEVEL: INFO
+      CADENZA_WORKERS: "4"
+
+    volumes:
+      # Your music library. Use :ro instead of :rw to look before it touches
+      # anything -- scanning and duplicate analysis work read-only.
+      - ${MUSIC_PATH}:/music:rw
+      # Quarantine. Keep it on the SAME volume as the library, or every
+      # "delete" becomes a full file copy instead of an instant rename.
+      - ${MUSIC_PATH}/.cadenza-quarantine:/quarantine:rw
+      # Database, logs, artwork cache and your API keys. Back this up.
+      - ${VAR_DIR}/config:/config:rw
+
+    ports:
+      # http://<nas-ip>:${HTTP_PORT}
+      # A password is generated on first run and written to
+      # initial-password.txt in the config folder above; you are made to change
+      # it at first sign-in. Keep this on the LAN regardless: it is plain http.
+      - "${HTTP_PORT}:8760"
+
+    security_opt:
+      - no-new-privileges:true
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8760/health',timeout=4).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+EOF
+chmod 644 "${COMPOSE_FILE}" 2>/dev/null || true
 
 exit 0
