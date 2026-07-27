@@ -3,7 +3,7 @@
 set -eu
 
 PKG_NAME="Cadenza"
-PKG_VERS="${PKG_VERS:-1.0.0-0001}"
+PKG_VERS="${PKG_VERS:-$(tr -d ' \t\r\n' < "$(dirname "${BASH_SOURCE[0]}")/../../VERSION")}"
 PKG_ARCH="${PKG_ARCH:-x86_64}"
 
 # DSM 7.2 is the baseline actually targeted. Container Manager (package id

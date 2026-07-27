@@ -279,6 +279,15 @@ jobs:
       - name: Check the shell scripts
         run: bash scripts/check-shell-scripts.sh
 
+      # DSM silently declines a package whose build number is not newer than
+      # the installed one, so a forgotten bump does not fail -- it looks like
+      # the install did nothing. CHECK_BUMPED makes a pull request prove the
+      # version moved.
+      - name: Check the version metadata
+        env:
+          CHECK_BUMPED: ${{ github.event_name == 'pull_request' && '1' || '' }}
+        run: bash scripts/check-version.sh
+
       # The native payload ships the built UI, so it has to exist before the
       # package is assembled. build-native-payload.sh fails rather than
       # producing a package that serves a blank page.

@@ -15,7 +15,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 PKG_NAME="Cadenza"
-PKG_VERS="${PKG_VERS:-1.0.0-0001}"
+# One place, read by everything. DSM compares the build number after the dash
+# and refuses to install a package that is not newer than the one present, so a
+# forgotten bump looks like "the install did nothing".
+PKG_VERS="${PKG_VERS:-$(tr -d ' \t\r\n' < "${SCRIPT_DIR}/../../VERSION")}"
 PKG_ARCH="${PKG_ARCH:-x86_64}"
 
 BUILD_DIR="${ROOT_DIR}/build"
