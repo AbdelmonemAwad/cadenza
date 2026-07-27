@@ -268,6 +268,13 @@ apply_port "${HTTP_PORT}"
 PKG_USER="cadenza"
 ACL_TOOL="/usr/syno/bin/synoacltool"
 
+# Best effort, and it is expected to fail on a stock DSM. Measured on a
+# DS1821+ running DSM 7.2.1: requesting root for postinst via conf/privilege --
+# the mechanism Synology's own AudioStation uses -- makes DSM refuse the
+# package outright at upload with error 4557, because it is unsigned. So the
+# package genuinely cannot grant itself access to a share, and the instructions
+# printed below are the real mechanism, not a fallback. This is kept because it
+# costs nothing and would work for a signed build.
 grant_access() {
     _path="$1"
     _what="$2"
@@ -286,9 +293,12 @@ grant_access() {
     if "${ACL_TOOL}" -add "${_path}" "user:${PKG_USER}:allow:rwxpdDaARWc--:fd--" >/dev/null 2>&1; then
         log_line "${_what}: granted ${PKG_USER} read/write on ${_path}"
     else
-        log_line "WARNING: could not grant ${PKG_USER} access to ${_path}."
-        log_line "Add it in Control Panel -> Shared Folder -> Edit -> Permissions,"
-        log_line "choosing 'System internal user', or Cadenza cannot read your library."
+        log_line "ACTION NEEDED: grant ${PKG_USER} access to ${_path}"
+        log_line "  DSM does not let an unsigned package do this for itself."
+        log_line "  Control Panel -> Shared Folder -> select the folder -> Edit"
+        log_line "  -> Permissions -> change the dropdown to 'System internal"
+        log_line "  user' -> tick ${PKG_USER} -> Save. Then restart Cadenza."
+        log_line "  This is the same entry Plex, Emby and Radarr each have."
     fi
 }
 

@@ -3,15 +3,5 @@
         "run-as": "package"
     },
     "username": "cadenza",
-    "groupname": "cadenza",
-    "ctrl-script": [
-        {
-            "action": "postinst",
-            "run-as": "root"
-        },
-        {
-            "action": "postupgrade",
-            "run-as": "root"
-        }
-    ]
+    "groupname": "cadenza"
 }
