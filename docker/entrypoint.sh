@@ -4,6 +4,14 @@ set -eu
 
 log() { echo "[cadenza] $*"; }
 
+# Run an explicit command instead of the service stack when one is given, so
+# `docker run <image> ffmpeg -version` and `docker run <image> sh` behave the
+# way anyone would expect. Compose passes no command, so normal startup is
+# unaffected.
+if [ "$#" -gt 0 ]; then
+    exec "$@"
+fi
+
 : "${CADENZA_CONFIG_DIR:=/config}"
 : "${CADENZA_MUSIC_ROOT:=/music}"
 : "${CADENZA_QUARANTINE_ROOT:=/quarantine}"

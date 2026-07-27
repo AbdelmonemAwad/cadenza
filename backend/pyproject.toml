@@ -29,6 +29,9 @@ ignore = [
     "SIM108", # a ternary is not always clearer than if/else
     "UP042",  # (str, Enum) is the established SQLAlchemy pattern; switching
               # persisted enums to StrEnum changes their base class for no gain
+    "UP038",  # isinstance(x, X | Y) allocates a UnionType on every call, so it
+              # is slower than the tuple form. These checks run per file across
+              # a whole library scan. Ruff itself later deprecated this rule.
 ]
 
 [tool.ruff.lint.per-file-ignores]

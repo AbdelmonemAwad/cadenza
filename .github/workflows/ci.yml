@@ -99,12 +99,45 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Verify the runtime has its tools and the app boots
+      # --entrypoint is deliberate: it tests the binaries directly and cannot
+      # accidentally launch the long-running service stack, which would hang
+      # the job until the workflow timeout.
+      - name: Verify the runtime carries its tools
+        timeout-minutes: 3
         run: |
-          docker run --rm cadenza/cadenza:ci ffmpeg -version | head -1
-          docker run --rm cadenza/cadenza:ci fpcalc -version
-          docker run --rm -e CADENZA_CONFIG_DIR=/tmp/cfg cadenza/cadenza:ci \
-            python -c "from app.main import create_app; create_app(); print('app imports OK')"
+          docker run --rm --entrypoint ffmpeg  cadenza/cadenza:ci -version | head -1
+          docker run --rm --entrypoint ffprobe cadenza/cadenza:ci -version | head -1
+          docker run --rm --entrypoint fpcalc  cadenza/cadenza:ci -version
+          docker run --rm --entrypoint nginx   cadenza/cadenza:ci -v
+
+      - name: Verify the application imports and builds its routes
+        timeout-minutes: 3
+        run: |
+          docker run --rm -e CADENZA_CONFIG_DIR=/tmp/cfg \
+            -e CADENZA_QUARANTINE_ROOT=/tmp/q --entrypoint python \
+            cadenza/cadenza:ci -c "
+          from app.main import create_app
+          app = create_app()
+          paths = sorted(r.path for r in app.routes)
+          assert '/health' in paths, paths
+          assert any(p.startswith('/api/v1/convert') for p in paths), paths
+          print(f'app OK: {len(paths)} routes registered')
+          "
+
+      - name: Verify the UI bundle was baked into the image
+        timeout-minutes: 2
+        run: |
+          docker run --rm --entrypoint sh cadenza/cadenza:ci -c \
+            'test -s /app/www/index.html && ls /app/www/assets | head -5'
+
+      # The container must run as a normal user on the NAS, never root, or it
+      # will write root-owned files into the user's music share.
+      - name: Verify it runs as a non-root user
+        timeout-minutes: 3
+        run: |
+          uid=$(docker run --rm --user 1029:100 --entrypoint id cadenza/cadenza:ci -u)
+          echo "container uid: $uid"
+          test "$uid" = "1029"
 
   package:
     name: Synology .spk
@@ -117,14 +150,54 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
+      # setup-python gives an isolated interpreter; a bare `pip install` on the
+      # runner's system Python fails with externally-managed-environment.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Install packaging prerequisites
-        run: pip install pillow
+        run: python -m pip install --upgrade pip pillow
 
       - name: Build image
-        run: docker build --platform linux/amd64 -f docker/Dockerfile -t cadenza/cadenza:1.0.0 .
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: cadenza/cadenza:1.0.0
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Build .spk
         run: SKIP_IMAGE=1 bash packaging/synology/build-spk.sh
+
+      # A .spk DSM cannot open is worse than no .spk, so check the archive
+      # layout and the checksum the installer verifies.
+      - name: Verify the package structure
+        run: |
+          SPK=$(ls dist/*.spk)
+          echo "built: $SPK ($(du -h "$SPK" | cut -f1))"
+          mkdir -p /tmp/spk && tar -xf "$SPK" -C /tmp/spk
+          for required in INFO package.tgz scripts/start-stop-status scripts/postinst \
+                          conf/privilege conf/resource ui/config PACKAGE_ICON.PNG; do
+            test -e "/tmp/spk/$required" || { echo "MISSING from .spk: $required"; exit 1; }
+            echo "  present: $required"
+          done
+          # DSM refuses to install if this checksum disagrees with package.tgz.
+          declared=$(grep '^checksum=' /tmp/spk/INFO | cut -d'"' -f2)
+          actual=$(md5sum /tmp/spk/package.tgz | cut -d' ' -f1)
+          echo "  checksum declared=$declared actual=$actual"
+          test "$declared" = "$actual" || { echo "checksum mismatch"; exit 1; }
+          grep -q '^arch="x86_64"' /tmp/spk/INFO || { echo "wrong arch"; exit 1; }
+          # The control scripts must be executable and LF-terminated on DSM.
+          for s in /tmp/spk/scripts/*; do
+            test -x "$s" || { echo "not executable: $s"; exit 1; }
+            grep -qU $'\r' "$s" && { echo "CRLF in $s"; exit 1; }
+          done
+          echo "package structure OK"
 
       - uses: actions/upload-artifact@v4
         with:
