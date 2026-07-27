@@ -230,8 +230,30 @@ case "${1:-}" in
         ;;
     killall) stop_daemon ;;
     log)     echo "${LOG_FILE}" ;;
+
+    # DSM 7 calls prestart before start, and treats a non-zero exit as a failed
+    # precheck: it abandons the start, marks the package start_failed, and then
+    # calls stop. This script used to answer prestart from the catch-all below,
+    # printing a usage line and exiting 1 -- so DSM could never start Cadenza at
+    # all, on demand or at boot. From /var/log/packages/Cadenza.log:
+    #
+    #   Begin start-stop-status prestart
+    #   usage: ... {start|stop|restart|status|killall|log}
+    #   End start-stop-status prestart ret=[1]
+    #
+    # The package looked healthy the whole time, because it had only ever been
+    # started by hand over SSH.
+    #
+    # There is nothing to check here that start_daemon does not already check
+    # for itself, and it reports its findings in a log the user can read rather
+    # than as an exit code DSM renders as "Failed to pass precheck".
+    prestart|poststart|prestop|poststop) : ;;
+
     *)
-        echo "usage: $0 {start|stop|restart|status|killall|log}" >&2
-        exit 1
+        # Exit 0, not 1. This script is only ever invoked by DSM, and the cost
+        # of the two answers is not symmetric: a verb we do not recognise costs
+        # nothing if ignored, while refusing it stops the package from running.
+        # That is exactly how prestart was lost above.
+        log "ignoring unrecognised argument: ${1:-}"
         ;;
 esac

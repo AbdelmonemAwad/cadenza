@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.1.3] - 2026-07-28
+
+### Fixed
+
+- **DSM can start the package.** It could not before — not on demand, and not at
+  boot. DSM 7 calls `start-stop-status prestart` before `start` and treats a
+  non-zero exit as a failed precheck; the script handled six verbs and answered
+  everything else from a catch-all that printed a usage line and exited 1. So
+  every start attempt ended at `prestart ret=[1]`, Package Center reported
+  `Failed to pass precheck`, and `start` was never reached. The package had only
+  ever been started by hand over SSH, which works and leaves a healthy-looking
+  service answering `/health`, so nothing exercised the path DSM actually uses.
+  The lifecycle verbs are now no-ops and the catch-all exits 0: an unrecognised
+  verb costs nothing if ignored, while refusing it stops the package running at
+  all.
+
 ## [2.1.2] - 2026-07-28
 
 ### Fixed
