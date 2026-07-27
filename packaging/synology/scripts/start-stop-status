@@ -22,6 +22,23 @@ VAR_DIR="${PKG_DIR}/var"
 PID_FILE="${VAR_DIR}/cadenza.pid"
 LOG_FILE="${VAR_DIR}/logs/service.log"
 
+# Where the database, the account and the API keys were last found. Written on
+# every successful start, in two places, and read from whichever answers first.
+#
+# etc/ is staged by preupgrade and put back by postupgrade, which is what makes
+# it survive postinst rewriting cadenza.env from the wizard's answers. But that
+# staging can fail -- preupgrade gives up quietly if it cannot make its
+# directory, and postupgrade only checks that the directory exists, not that
+# anything landed in it. If the record were only there, a failed stage would
+# lose it and the upgraded service would go looking wherever the wizard once
+# pointed, find nothing, and ask for a new account.
+#
+# var/ is @appdata. DSM keeps it across an upgrade on its own, no staging
+# involved, and postinst never writes to it. So the copy that needs no help is
+# the one that is hardest to lose.
+DATA_RECORD="${ETC_DIR}/data-dir.conf"
+DATA_RECORD_ALT="${VAR_DIR}/data-dir.conf"
+
 PYTHON="${TARGET}/python/bin/python3"
 APP_DIR="${TARGET}/app"
 
@@ -38,7 +55,6 @@ CADENZA_HTTP_PORT="${CADENZA_HTTP_PORT:-8760}"
 
 export CADENZA_MUSIC_ROOT="${HOST_MUSIC_PATH:-/volume1/music}"
 export CADENZA_QUARANTINE_ROOT="${HOST_QUARANTINE_PATH:-${CADENZA_MUSIC_ROOT}/.cadenza-quarantine}"
-export CADENZA_CONFIG_DIR="${HOST_CONFIG_PATH:-${VAR_DIR}/config}"
 export CADENZA_WWW_DIR="${TARGET}/www"
 export CADENZA_LOG_LEVEL="${CADENZA_LOG_LEVEL:-INFO}"
 export CADENZA_DEFAULT_LOCALE="${CADENZA_DEFAULT_LOCALE:-en}"
@@ -56,6 +72,120 @@ export PYTHONHOME="${TARGET}/python"
 export PYTHONNOUSERSITE=1
 export PYTHONDONTWRITEBYTECODE=1
 export LD_LIBRARY_PATH="${TARGET}/python/lib:${TARGET}/ffmpeg-lib:${LD_LIBRARY_PATH:-}"
+
+# --------------------------------------------------------------------------
+# Which directory holds the database, the account and the API keys.
+#
+# This used to be one line -- HOST_CONFIG_PATH, or the package directory if the
+# chosen folder was not writable -- re-evaluated on every single start. That is
+# a data-loss trap, and it was armed on a real install: the wizard had recorded
+# /volume1/docker/cadenza, that folder was not reachable by the service account,
+# so the app quietly used var/config instead and put the database and the
+# account there. Nothing said so. Had the configured folder later become
+# writable -- the user creates it, or ticks the service account on the share --
+# the very next restart would have switched to it, found it empty, and shown
+# the create-your-account screen as though every scan and every setting had
+# been lost.
+#
+# So the directory is decided once and then remembered, in a file under etc/,
+# which is what DSM keeps across an upgrade.
+#
+# The third branch is the one that matters most. If data was recorded somewhere
+# and that somewhere cannot be reached now -- volume not mounted, permission
+# withdrawn -- Cadenza refuses to start. Starting anyway would offer a fresh
+# account on an empty database while the real one sat intact a directory away,
+# and a user who accepts that offer starts writing into the wrong place. A
+# service that will not start says what is wrong; one that starts empty does
+# not.
+# --------------------------------------------------------------------------
+has_data() {
+    [ -n "${1:-}" ] || return 1
+    [ -f "$1/cadenza.db" ] || [ -f "$1/auth.json" ]
+}
+
+is_writable_dir() {
+    [ -n "${1:-}" ] || return 1
+    mkdir -p "$1" 2>/dev/null || true
+    [ -d "$1" ] && [ -w "$1" ]
+}
+
+resolve_data_dir() {
+    _configured="${HOST_CONFIG_PATH:-${VAR_DIR}/config}"
+    _fallback="${VAR_DIR}/config"
+
+    _recorded=""
+    # Each record is read into a cleared variable, so an exported
+    # CADENZA_DATA_DIR in the environment -- or a value left by the first file --
+    # cannot stand in for a record that is missing or unreadable.
+    for _rec in "${DATA_RECORD}" "${DATA_RECORD_ALT}"; do
+        [ -f "${_rec}" ] || continue
+        CADENZA_DATA_DIR=""
+        # Written by this script, never by a user; sourcing it is safe.
+        . "${_rec}" 2>/dev/null || true
+        if [ -n "${CADENZA_DATA_DIR:-}" ]; then
+            _recorded="${CADENZA_DATA_DIR}"
+            break
+        fi
+    done
+    CADENZA_DATA_DIR=""
+
+    # 1. A remembered directory that still holds data wins, whatever the
+    #    configured path now says.
+    if has_data "${_recorded}"; then
+        if is_writable_dir "${_recorded}"; then
+            if [ "${_recorded}" != "${_configured}" ]; then
+                log "NOTE: cadenza.env asks for ${_configured}, but your data is in"
+                log "      ${_recorded} and that is where Cadenza will keep it."
+                log "      To move it, stop the package, copy the contents across,"
+                log "      then update ${DATA_RECORD}."
+            fi
+            DATA_DIR="${_recorded}"
+            return 0
+        fi
+        log "ERROR: Cadenza will not start."
+        log "  Your database and account are in ${_recorded},"
+        log "  and that directory cannot be written by $(id -un 2>/dev/null || echo cadenza)."
+        log "  Starting anyway would show an empty Cadenza asking you to create an"
+        log "  account, as though your library had been lost. It has not been."
+        log "  Check that the volume is mounted, and that the service account still"
+        log "  has access to that folder, then start the package again."
+        return 1
+    fi
+
+    # 2. Nothing recorded yet, or the record points at an empty directory.
+    #    Prefer what was configured; fall back to the package's own directory,
+    #    which the service account can always write. Falling back is safe here
+    #    precisely because there is no data anywhere to lose.
+    if is_writable_dir "${_configured}"; then
+        DATA_DIR="${_configured}"
+    else
+        log "NOTE: ${_configured} is not writable by $(id -un 2>/dev/null || echo cadenza)."
+        log "      Using ${_fallback}, so Cadenza starts and can tell you this."
+        log "      To use the folder you chose: Control Panel -> Shared Folder"
+        log "      -> Edit -> Permissions -> 'System internal user' -> tick"
+        log "      $(id -un 2>/dev/null || echo cadenza) -> Save, then reinstall."
+        log "      Once Cadenza has written data somewhere it stays there, so"
+        log "      granting access later will not move it on its own."
+        DATA_DIR="${_fallback}"
+    fi
+
+    is_writable_dir "${DATA_DIR}" || {
+        log "ERROR: ${DATA_DIR} is not writable either. This should not happen --"
+        log "  it is inside the package's own directory."
+        return 1
+    }
+    return 0
+}
+
+remember_data_dir() {
+    # Recorded even when it equals the configured path: what makes the next
+    # start safe is that the answer is written down, not that it was surprising.
+    for _rec in "${DATA_RECORD}" "${DATA_RECORD_ALT}"; do
+        printf 'CADENZA_DATA_DIR=%s\n' "$1" > "${_rec}.new" 2>/dev/null \
+            && mv "${_rec}.new" "${_rec}" 2>/dev/null \
+            || rm -f "${_rec}.new" 2>/dev/null || true
+    done
+}
 
 is_running() {
     [ -f "${PID_FILE}" ] || return 1
@@ -108,35 +238,14 @@ start_daemon() {
         return 1
     fi
 
-    # Checked here so the reason is readable, rather than letting the app die
-    # on its first write.
     _me="$(id -un 2>/dev/null || echo cadenza)"
-    mkdir -p "${CADENZA_CONFIG_DIR}" 2>/dev/null || true
-    if [ ! -w "${CADENZA_CONFIG_DIR}" ]; then
-        # Fall back rather than refuse. A Synology shared folder carries no
-        # POSIX permissions -- access comes from an ACL entry -- and an
-        # unsigned package cannot add one for itself, so the folder the user
-        # picked is frequently unreachable on a first install. Refusing to
-        # start meant the package installed and did nothing, with the reason
-        # buried in a log file, which is the worst of both. The package
-        # directory is always writable by the service account, so Cadenza
-        # starts, serves its interface, and says what to change.
-        log "NOTE: ${CADENZA_CONFIG_DIR} is not writable by ${_me}."
-        log "Using ${VAR_DIR}/config for now so Cadenza can start."
-        log "To use the folder you chose, grant the service account access:"
-        log "  Control Panel -> Shared Folder -> Edit -> Permissions,"
-        log "  switch the dropdown to 'System internal user', tick ${_me},"
-        log "  then restart the package. Or over SSH:"
-        log "    sudo synoacltool -add ${CADENZA_CONFIG_DIR} 'user:${_me}:allow:rwxpdDaARWc--:fd--'"
-        CADENZA_CONFIG_DIR="${VAR_DIR}/config"
-        export CADENZA_CONFIG_DIR
-        mkdir -p "${CADENZA_CONFIG_DIR}" 2>/dev/null || true
-    fi
-    if [ ! -w "${CADENZA_CONFIG_DIR}" ]; then
-        log "ERROR: ${CADENZA_CONFIG_DIR} is not writable by ${_me} either."
-        log "This should not happen -- it is inside the package's own directory."
-        return 1
-    fi
+
+    # Decided once and remembered, never re-derived. See resolve_data_dir.
+    DATA_DIR=""
+    resolve_data_dir || return 1
+    export CADENZA_CONFIG_DIR="${DATA_DIR}"
+    remember_data_dir "${DATA_DIR}"
+
     # The library is checked too, and only warned about: a library mounted
     # read-only on purpose is a supported way to evaluate Cadenza, and scanning
     # and duplicate analysis never write. Refusing to start would take that away.
@@ -150,7 +259,7 @@ start_daemon() {
         log "This is the same entry Plex, Emby and Radarr each have on that share."
     fi
 
-    log "starting on port ${CADENZA_HTTP_PORT} (music=${CADENZA_MUSIC_ROOT})"
+    log "starting on port ${CADENZA_HTTP_PORT} (music=${CADENZA_MUSIC_ROOT} data=${CADENZA_CONFIG_DIR})"
     # 0.0.0.0 because nothing proxies this -- the browser connects straight to
     # the port. One worker, because the job runner and the scheduler keep state
     # in process: a second worker would run every scheduled job twice.

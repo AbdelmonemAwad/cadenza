@@ -23,9 +23,18 @@ log_line() {
 }
 
 if [ -d "${STAGE}" ]; then
-    [ -f "${STAGE}/cadenza.env" ] && cp -a "${STAGE}/cadenza.env" "${ETC_DIR}/"
-    [ -f "${STAGE}/port.conf" ]   && cp -a "${STAGE}/port.conf"   "${ETC_DIR}/"
+    [ -f "${STAGE}/cadenza.env" ]    && cp -a "${STAGE}/cadenza.env"    "${ETC_DIR}/"
+    [ -f "${STAGE}/port.conf" ]      && cp -a "${STAGE}/port.conf"      "${ETC_DIR}/"
+    # Restored after postinst has run, which is the point: postinst rewrites
+    # cadenza.env from the wizard's answers, and without this the upgraded
+    # service would look for its data wherever the wizard once pointed rather
+    # than where the previous version actually put it.
+    [ -f "${STAGE}/data-dir.conf" ]  && cp -a "${STAGE}/data-dir.conf"  "${ETC_DIR}/"
     rm -rf "${STAGE}"
+fi
+
+if [ -f "${ETC_DIR}/data-dir.conf" ]; then
+    log_line "Upgrade: data directory carried over -- $(cat "${ETC_DIR}/data-dir.conf")"
 fi
 
 HTTP_PORT="8760"

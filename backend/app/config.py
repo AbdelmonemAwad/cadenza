@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import threading
 from pathlib import Path
 from typing import Annotated, Any
@@ -12,7 +13,7 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from app.core.secretfile import tighten, write_private_text
 
 APP_NAME = "Cadenza"
-APP_VERSION = "2.1.3"   # kept in step with the VERSION file at the repo root
+APP_VERSION = "2.2.0"   # kept in step with the VERSION file at the repo root
 
 AUDIO_EXTENSIONS: frozenset[str] = frozenset({
     ".mp3", ".flac", ".wav", ".aac", ".m4a", ".m4b", ".alac",
@@ -178,7 +179,18 @@ _instance: Settings | None = None
 
 
 def _load_overrides(base: Settings) -> Settings:
-    """Merge UI-saved overrides on top of environment values."""
+    """Merge UI-saved overrides on top of environment values.
+
+    Locked fields are dropped here as well as at the API. `settings_policy`
+    refuses to write `config_dir`, `music_root` and the tool paths over the
+    network -- but this file is read straight back into the settings object, so
+    without the same filter a value that the API would reject took effect
+    anyway as soon as it reached the file by any other route. `config_dir` is
+    the one that matters most: it decides where the database and the account
+    live, and a value here would override what the service was started with.
+    """
+    from app.core.settings_policy import LOCKED_FIELDS
+
     f = base.overrides_file
     if not f.is_file():
         return base
@@ -187,8 +199,19 @@ def _load_overrides(base: Settings) -> Settings:
     except (OSError, json.JSONDecodeError):
         return base
     known = set(Settings.model_fields)
+
+    ignored = sorted(k for k in data if k in LOCKED_FIELDS)
+    if ignored:
+        # Logged rather than silently discarded: someone edited this file on
+        # purpose and deserves to know why it did nothing.
+        logging.getLogger(__name__).warning(
+            "%s sets %s, which is deployment configuration and is ignored here. "
+            "Set it in the package environment instead.",
+            f, ", ".join(ignored))
+
     merged = base.model_dump()
-    merged.update({k: v for k, v in data.items() if k in known})
+    merged.update({k: v for k, v in data.items()
+                   if k in known and k not in LOCKED_FIELDS})
     return Settings(**merged)
 
 
