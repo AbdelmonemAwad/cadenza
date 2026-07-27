@@ -1,0 +1,61 @@
+# Keep the build context small and, more importantly, keep host-built
+# artefacts out of the image.
+#
+# The frontend stage runs `npm ci` and then `COPY frontend/ ./`. Without this
+# file that COPY would drop the host's node_modules over the ones just
+# installed inside the container. On a Windows or macOS host those contain
+# platform-specific esbuild and rollup binaries, and the vite build then fails
+# with "Cannot find module @rollup/rollup-linux-x64-gnu". CI never hit this
+# because a fresh checkout has no node_modules, but every local `make build`
+# would.
+
+# Node
+**/node_modules
+frontend/dist
+.vite
+
+# Python
+**/__pycache__
+**/*.py[cod]
+**/.venv
+**/venv
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+**/htmlcov
+**/.coverage
+
+# Build output and packaging artefacts
+build/
+dist/
+*.spk
+*.tar
+
+# Runtime data and secrets: these must never enter an image layer
+*.db
+*.db-wal
+*.db-shm
+.env
+.env.local
+*.p8
+apple_user_token.json
+settings.json
+secrets.json
+**/_dev*
+
+# VCS, CI and docs that the image does not need
+.git
+.gitignore
+.gitattributes
+.github
+.editorconfig
+docs/
+*.md
+!README.md
+
+# Editor and OS noise
+.vscode
+.idea
+**/.DS_Store
+**/Thumbs.db
+**/desktop.ini
