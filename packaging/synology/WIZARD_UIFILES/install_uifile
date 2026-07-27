@@ -13,8 +13,8 @@
                         "validator": {
                             "allowBlank": false,
                             "regex": {
-                                "expr": "/^\\/volume[0-9]+\\/[^\\s]+$/",
-                                "errorText": "Must start with /volume1/ — for example /volume1/music"
+                                "expr": "/^\\/volume[0-9]+\\/[^\\s:\"'`$\\\\]+$/",
+                                "errorText": "Must start with /volume1/ and contain no spaces, colons or quotes — for example /volume1/music"
                             }
                         }
                     }
@@ -22,17 +22,17 @@
             },
             {
                 "type": "textfield",
-                "desc": "Web interface port",
+                "desc": "Folder for the database, logs and settings. It must already exist and be owned by the account below — create it in File Station first. Do not use a folder inside the music library.",
                 "subitems": [
                     {
-                        "key": "wizard_http_port",
-                        "desc": "Port",
-                        "defaultValue": "8760",
+                        "key": "wizard_config_path",
+                        "desc": "Config folder",
+                        "defaultValue": "/volume1/docker/cadenza",
                         "validator": {
                             "allowBlank": false,
                             "regex": {
-                                "expr": "/^[0-9]{4,5}$/",
-                                "errorText": "Enter a valid port number (1024-65535)"
+                                "expr": "/^\\/volume[0-9]+\\/[^\\s:\"'`$\\\\]+$/",
+                                "errorText": "Must start with /volume1/ and contain no spaces, colons or quotes — for example /volume1/docker/cadenza"
                             }
                         }
                     }

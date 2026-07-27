@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 import json
-import os
 import threading
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+from app.core.secretfile import tighten, write_private_text
 
 APP_NAME = "Cadenza"
 APP_VERSION = "1.0.0"
@@ -40,6 +41,32 @@ class Settings(BaseSettings):
     # Off in production: the OpenAPI schema is a map of every destructive
     # endpoint and its exact request shape.
     enable_docs: bool = False
+    # Empty in production: nginx serves the UI from the same origin, so no
+    # cross-origin request should ever be allowed to carry the session cookie.
+    # Set to the Vite dev server, e.g.
+    # CADENZA_CORS_DEV_ORIGINS='["http://localhost:5173"]', only while
+    # developing. Exact origins -- no wildcards and no port patterns.
+    # NoDecode is load-bearing. Without it pydantic-settings JSON-decodes any
+    # complex field inside the environment source, before validators run, so
+    # the two spellings anyone reaches for first -- CADENZA_CORS_DEV_ORIGINS=
+    # to mean "none", and a bare http://localhost:5173 to mean one origin --
+    # both aborted startup with a SettingsError, thrown before logging is even
+    # configured. A setting that ships off has to be switchable without the
+    # user knowing it is JSON underneath.
+    cors_dev_origins: Annotated[tuple[str, ...], NoDecode] = ()
+
+    @field_validator("cors_dev_origins", mode="before")
+    @classmethod
+    def _split_origins(cls, value: Any) -> Any:
+        """Accept a comma-separated list, a JSON array, or nothing at all."""
+        if not isinstance(value, str):
+            return value
+        text = value.strip()
+        if not text:
+            return ()
+        if text.startswith("["):
+            return tuple(json.loads(text))
+        return tuple(part.strip() for part in text.split(",") if part.strip())
 
     # --- Scanning ---
     follow_symlinks: bool = False
@@ -126,6 +153,19 @@ class Settings(BaseSettings):
                   self.config_dir / "logs", self.quarantine_root):
             p.mkdir(parents=True, exist_ok=True)
 
+    def tighten_secret_files(self) -> None:
+        """Bring credential files down to 0600 on startup.
+
+        New writes are already private. This is for files an earlier version
+        created at the process umask, and for a config volume restored from a
+        backup that did not preserve modes -- neither of which the user has any
+        way to notice.
+        """
+        for name in ("settings.json", "auth.json", "secret_key",
+                     "apple_user_token.json", "initial-password.txt"):
+            tighten(self.config_dir / name)
+        tighten(Path(self.apple_private_key_path))
+
 
 _lock = threading.RLock()
 _instance: Settings | None = None
@@ -168,9 +208,11 @@ def save_settings(patch: dict[str, Any]) -> Settings:
                 current = {}
         known = set(Settings.model_fields)
         current.update({k: v for k, v in patch.items() if k in known})
-        f.parent.mkdir(parents=True, exist_ok=True)
-        tmp = f.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(current, ensure_ascii=False, indent=2, default=str), "utf-8")
-        os.replace(tmp, f)          # atomic: never leave a half-written config
+        # This file holds the AcoustID, Discogs and Last.fm keys, so it is
+        # written 0600 from the moment it exists. It used to be created at the
+        # process umask on a config volume that is a DSM shared folder, where
+        # other packages and users on the NAS can read it.
+        write_private_text(
+            f, json.dumps(current, ensure_ascii=False, indent=2, default=str))
         _instance = _load_overrides(Settings())
         return _instance

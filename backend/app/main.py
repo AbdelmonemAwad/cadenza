@@ -23,6 +23,9 @@ async def lifespan(app: FastAPI):
     s = get_settings()
     setup_logging(s.log_level, s.config_dir / "logs" / "cadenza.log")
     s.ensure_dirs()
+    # Credential files written by an earlier version, or restored from a backup
+    # that dropped the modes, are brought down to 0600 before anything is served.
+    s.tighten_secret_files()
 
     # Generate a first-run password before serving anything. A fixed default
     # would be worse than none: it looks protected while every install shares
@@ -67,13 +70,26 @@ def create_app() -> FastAPI:
         redoc_url=None,
         openapi_url="/api/openapi.json" if s.enable_docs else None,
     )
-    # In production the UI is served by nginx from the same origin; this only
-    # exists so `npm run dev` on a workstation can reach the API.
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origin_regex=r"http://(localhost|127\.0\.0\.1)(:\d+)?",
-        allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
-    )
+    # Off unless someone explicitly asks for it, which nothing in this project
+    # does. nginx serves the UI from the same origin in a deployment, and the
+    # Vite dev server proxies /api and /health to the backend, so the browser
+    # sees same-origin requests in both cases.
+    #
+    # This used to allow any http://localhost:<port> with credentials. It was
+    # justified as a convenience for `npm run dev` -- which, given the proxy,
+    # never needed it. What it did buy was a rule letting every other web app
+    # on the machine make credentialed requests to Cadenza and read the
+    # replies, on a box whose whole job is to be reachable from the network.
+    # The setting stays for an unusual setup that runs the UI elsewhere, but it
+    # takes exact origins and is empty by default.
+    if s.cors_dev_origins:
+        log.warning("CORS is enabled for %s -- intended for development only",
+                    s.cors_dev_origins)
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=list(s.cors_dev_origins),
+            allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
+        )
     app.include_router(api_router, prefix=s.api_prefix)
 
     @app.get("/health", include_in_schema=False)

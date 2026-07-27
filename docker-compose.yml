@@ -41,8 +41,9 @@ services:
 
     ports:
       # Reachable at http://<nas-ip>:8760
-      # There is no login on this port yet -- see the security notes in the
-      # README before exposing it beyond your LAN.
+      # A password is generated on first run and written to
+      # <config>/initial-password.txt; you are made to change it at first
+      # sign-in. Keep this on the LAN regardless: it is plain http.
       - "8760:8760"
 
     deploy:

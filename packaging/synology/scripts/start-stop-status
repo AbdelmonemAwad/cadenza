@@ -2,55 +2,63 @@
 # =============================================================================
 #  Cadenza - DSM package control script
 #
-#  This package does NOT currently run the application. Cadenza ships as a
-#  container, and on DSM 7 an unsigned third-party package cannot reach the
-#  Docker daemon:
+#  What this package is, and what it is not.
+#
+#  It is NOT a launcher. Cadenza ships as a container, and on DSM 7 an unsigned
+#  third-party package cannot reach the Docker daemon:
 #
 #    * DSM 7 refuses to install a package that requests root privileges.
 #    * /var/run/docker.sock is root:root 0660 and there is no docker group for
 #      the package user to join.
 #
-#  Driving Docker from here is therefore impossible without either a Synology
-#  signing key or a change that would hand root-equivalent access to the
-#  package user. Use Container Manager instead -- see the README.
+#  It IS the DSM-side half of the install: the desktop icon and the port entry
+#  that open the web interface, plus a docker-compose.yml written at install
+#  time with the paths, port and user the wizard collected, ready to paste into
+#  Container Manager.
+#
+#  So `start` succeeds. The earlier version exited 1 here to be honest about
+#  not launching anything, but DSM reads that as a package that failed to
+#  start: it shows an error, marks the package broken and hides the icon --
+#  removing the one thing this package does provide. Reporting failure for work
+#  the package never claimed to do is not honesty, it is a false alarm.
 #
 #  Tracked in https://github.com/AbdelmonemAwad/cadenza/issues/2, which also
-#  covers reworking this into a native package with no Docker dependency.
+#  covers reworking this into a native package that runs the application itself
+#  with no Docker dependency at all.
 # =============================================================================
 set -u
 
 PKG_NAME="Cadenza"
 PKG_DIR="/var/packages/${PKG_NAME}"
-LOG_FILE="${PKG_DIR}/var/logs/package.log"
+VAR_DIR="${PKG_DIR}/var"
+LOG_FILE="${VAR_DIR}/logs/package.log"
+COMPOSE_FILE="${VAR_DIR}/docker-compose.yml"
 
-mkdir -p "${PKG_DIR}/var/logs" 2>/dev/null || true
+mkdir -p "${VAR_DIR}/logs" 2>/dev/null || true
 
 log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $*" >> "${LOG_FILE}" 2>/dev/null || true; }
 
-explain() {
-    log "Cadenza cannot be started from Package Center."
-    log "On DSM 7 a third-party package runs as an unprivileged user and cannot"
-    log "reach the Docker daemon, so this package cannot launch the container."
-    log ""
-    log "Run it through Container Manager instead:"
-    log "  1. Container Manager -> Project -> Create"
-    log "  2. Use the docker-compose.yml from the project repository"
-    log "  3. Adjust the volume paths and the user: line, then start the project"
-    log ""
-    log "See https://github.com/AbdelmonemAwad/cadenza#install"
-}
-
 case "${1:-}" in
     start)
-        explain
-        echo "Cadenza must be run through Container Manager. See ${LOG_FILE}." >&2
-        exit 1
+        log "Cadenza package started: desktop icon and port entry are active."
+        log "The application itself runs as a Container Manager project."
+        log "A compose file with your wizard settings is at:"
+        log "  ${COMPOSE_FILE}"
+        log "Container Manager -> Project -> Create, and point it at that file."
+        exit 0
         ;;
     stop)
+        log "Cadenza package stopped. A running container is unaffected;"
+        log "stop it from Container Manager if that is what you meant."
         exit 0
         ;;
     status)
-        exit 3      # 3 = stopped, which is what DSM expects
+        # 0 = running. What this package contributes -- the portal entry -- is
+        # active for as long as the package is enabled. Whether the container
+        # is up is Container Manager's business, and is deliberately not
+        # reported here: this script has no way to ask, and guessing would put
+        # a wrong answer in Package Center.
+        exit 0
         ;;
     killall)
         exit 0

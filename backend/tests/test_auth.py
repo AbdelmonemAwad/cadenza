@@ -234,32 +234,27 @@ def test_signing_key_survives_a_roundtrip_through_disk(tmp_path, monkeypatch):
     assert reloaded == planted, "whitespace bytes must survive the roundtrip"
 
 
-def test_private_files_are_not_group_or_world_readable(tmp_path, monkeypatch):
+def test_the_credential_file_auth_writes_is_private(tmp_path, monkeypatch):
+    """Checks the real credential file, not the writer.
+
+    The writer's own behaviour moved to tests/test_secrets.py along with the
+    code. What belongs here is that save_credentials actually uses it: this
+    module owns auth.json, and the writer being correct is no use if this
+    caller stops going through it.
+    """
     import os
     import stat
 
-    from app.core import auth as auth_mod
+    from app.core.auth import AUTH_FILE, Credentials, hash_password, save_credentials
 
     if not hasattr(os, "fchmod"):
         pytest.skip("POSIX permissions only")
 
     monkeypatch.setattr(get_settings(), "config_dir", tmp_path, raising=False)
-    target = tmp_path / "secret-thing"
-    auth_mod._write_private(target, b"sensitive")
-    mode = stat.S_IMODE(target.stat().st_mode)
+    save_credentials(Credentials(password_hash=hash_password("a-long-enough-password")))
+
+    mode = stat.S_IMODE((tmp_path / AUTH_FILE).stat().st_mode)
     assert mode == 0o600, f"expected 0600, got {oct(mode)}"
-
-
-def test_write_private_ignores_a_hostile_preexisting_temp_file(tmp_path, monkeypatch):
-    """O_EXCL on a unique name: a pre-created temp file must not be reused,
-    which would silently inherit its permissions."""
-    from app.core import auth as auth_mod
-
-    monkeypatch.setattr(get_settings(), "config_dir", tmp_path, raising=False)
-    target = tmp_path / "thing"
-    (tmp_path / ".thing.tmp").write_text("planted", encoding="utf-8")
-    auth_mod._write_private(target, b"real")
-    assert target.read_bytes() == b"real"
 
 
 def test_password_change_revokes_other_sessions(client, known_password):
