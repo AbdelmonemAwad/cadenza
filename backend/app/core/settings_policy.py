@@ -32,7 +32,7 @@ LOCKED_FIELDS: frozenset[str] = frozenset({
     "music_root", "quarantine_root", "config_dir",
     "ffmpeg_bin", "ffprobe_bin", "fpcalc_bin",
     "apple_private_key_path",
-    "http_port", "api_prefix", "workers", "enable_docs",
+    "http_port", "api_prefix", "workers", "enable_docs", "cors_dev_origins",
     "user_agent", "provider_order",
 })
 

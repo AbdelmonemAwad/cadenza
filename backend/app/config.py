@@ -40,6 +40,12 @@ class Settings(BaseSettings):
     # Off in production: the OpenAPI schema is a map of every destructive
     # endpoint and its exact request shape.
     enable_docs: bool = False
+    # Empty in production: nginx serves the UI from the same origin, so no
+    # cross-origin request should ever be allowed to carry the session cookie.
+    # Set to the Vite dev server, e.g.
+    # CADENZA_CORS_DEV_ORIGINS='["http://localhost:5173"]', only while
+    # developing. Exact origins -- no wildcards and no port patterns.
+    cors_dev_origins: tuple[str, ...] = ()
 
     # --- Scanning ---
     follow_symlinks: bool = False
