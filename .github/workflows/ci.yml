@@ -145,11 +145,16 @@ jobs:
       # --entrypoint is deliberate: it tests the binaries directly and cannot
       # accidentally launch the long-running service stack, which would hang
       # the job until the workflow timeout.
+      # No pipes. `docker run ... | head -1` reports head's exit status, which
+      # is always 0, so this step passed with ffmpeg absent from the image
+      # entirely -- verified: exit 0 through the pipe, 127 without it. The
+      # default shell is `bash -e`, which has no pipefail to save it.
+      # -hide_banner trims the output that head was there to cut.
       - name: Verify the runtime carries its tools
         timeout-minutes: 3
         run: |
-          docker run --rm --entrypoint ffmpeg  cadenza/cadenza:ci -version | head -1
-          docker run --rm --entrypoint ffprobe cadenza/cadenza:ci -version | head -1
+          docker run --rm --entrypoint ffmpeg  cadenza/cadenza:ci -hide_banner -version
+          docker run --rm --entrypoint ffprobe cadenza/cadenza:ci -hide_banner -version
           docker run --rm --entrypoint fpcalc  cadenza/cadenza:ci -version
           docker run --rm --entrypoint nginx   cadenza/cadenza:ci -v
 
@@ -260,7 +265,14 @@ jobs:
     # already landed on main.
 
     steps:
+      # fetch-depth: 0 is load-bearing, not thoroughness. check-version.sh
+      # compares against origin/<base>, and the default shallow checkout creates
+      # neither that ref nor a merge base -- so the bump gate silently did
+      # nothing and had never once run since it was added. The script now fails
+      # loudly if the ref is missing, and this is what makes it present.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: docker/setup-buildx-action@v3
 
@@ -355,6 +367,30 @@ jobs:
             echo "MISSING from package.tgz: ${proto} (protocol-file points here)"; exit 1; }
           echo "  present in target/: ${proto}"
           python3 -c "import json;json.load(open('/tmp/payload/${uidir}/config'))"             || { echo "ui/config is not valid JSON"; exit 1; }
+
+          # ui/config names an icon, and DSM resolves that against dsmuidir too.
+          # Checking the config existed while its icon did not is the same
+          # mistake one level down: the shortcut registered and rendered blank.
+          # The icon path is read out of the config rather than assumed.
+          icon=$(python3 -c "
+          import json
+          cfg = json.load(open('/tmp/payload/${uidir}/config'))
+          entry = next(iter(cfg['.url'].values()))
+          print(entry.get('icon', ''))")
+          if [ -n "${icon}" ]; then
+            # The {0} placeholder is the size DSM substitutes.
+            found=0
+            for size in 16 24 32 48 72 256; do
+              candidate="/tmp/payload/${uidir}/$(echo "${icon}" | sed "s/{0}/${size}/")"
+              [ -s "${candidate}" ] && found=$((found + 1))
+            done
+            if [ "${found}" -eq 0 ]; then
+              echo "MISSING from package.tgz: ${uidir}/${icon} — ui/config names an"
+              echo "icon that is not in the payload, so the desktop tile renders blank."
+              exit 1
+            fi
+            echo "  present in target/: ${found} icon size(s) for ${icon}"
+          fi
 
           # The runtime the package cannot start without. Each of these was
           # absent from the package for its whole life before the native build.

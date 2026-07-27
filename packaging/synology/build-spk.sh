@@ -94,33 +94,7 @@ echo
 CLI
 chmod +x "${STAGE}/bin/cadenza"
 
-# ---- 3) package.tgz -------------------------------------------------------
-info "creating package.tgz ..."
-tar -C "${STAGE}" -czf "${SPK_DIR}/package.tgz" .
-
-# ---- 4) INFO and metadata -------------------------------------------------
-info "generating INFO ..."
-PKG_VERS="${PKG_VERS}" PKG_ARCH="${PKG_ARCH}" bash "${SCRIPT_DIR}/INFO.sh" > "${SPK_DIR}/INFO"
-
-# DSM verifies these two fields, so they must reflect the real payload.
-CHECKSUM="$(md5sum "${SPK_DIR}/package.tgz" | cut -d' ' -f1)"
-EXTRACTSIZE="$(du -sk "${STAGE}" | cut -f1)"
-{
-    echo "checksum=\"${CHECKSUM}\""
-    echo "extractsize=\"${EXTRACTSIZE}\""
-} >> "${SPK_DIR}/INFO"
-
-# ---- 5) Scripts and configuration ----------------------------------------
-cp -r "${SCRIPT_DIR}/scripts"        "${SPK_DIR}/"
-cp -r "${SCRIPT_DIR}/conf"           "${SPK_DIR}/"
-cp -r "${SCRIPT_DIR}/ui"             "${SPK_DIR}/"
-cp -r "${SCRIPT_DIR}/WIZARD_UIFILES" "${SPK_DIR}/" 2>/dev/null || true
-chmod 755 "${SPK_DIR}/scripts/"*
-
-# CRLF line endings make DSM's shell fail these scripts silently, so normalise.
-find "${SPK_DIR}/scripts" -type f -exec sed -i 's/\r$//' {} +
-
-# ---- 6) Icons -------------------------------------------------------------
+# ---- 3) Icons -------------------------------------------------------------
 for pair in "PACKAGE_ICON.PNG:72" "PACKAGE_ICON_256.PNG:256"; do
     name="${pair%%:*}"; size="${pair##*:}"
     src="${SCRIPT_DIR}/${name}"
@@ -147,10 +121,42 @@ PY
     fi
 done
 
-mkdir -p "${SPK_DIR}/ui/images"
+# Into the PAYLOAD as well as the outer archive. DSM resolves ui/config's
+# "icon" against dsmuidir, i.e. target/ui inside package.tgz; icons written only
+# to the outer archive are invisible to it and the desktop tile renders blank.
+# No `|| true` either -- a missing icon is a broken tile, not a warning.
+mkdir -p "${SPK_DIR}/ui/images" "${STAGE}/ui/images"
 for s in 16 24 32 48 72 256; do
-    cp "${SPK_DIR}/PACKAGE_ICON_256.PNG" "${SPK_DIR}/ui/images/cadenza_${s}.png" 2>/dev/null || true
+    cp "${SPK_DIR}/PACKAGE_ICON_256.PNG" "${SPK_DIR}/ui/images/cadenza_${s}.png"
+    cp "${SPK_DIR}/PACKAGE_ICON_256.PNG" "${STAGE}/ui/images/cadenza_${s}.png"
 done
+
+
+# ---- 4) package.tgz -------------------------------------------------------
+info "creating package.tgz ..."
+tar -C "${STAGE}" -czf "${SPK_DIR}/package.tgz" .
+
+# ---- 5) INFO and metadata -------------------------------------------------
+info "generating INFO ..."
+PKG_VERS="${PKG_VERS}" PKG_ARCH="${PKG_ARCH}" bash "${SCRIPT_DIR}/INFO.sh" > "${SPK_DIR}/INFO"
+
+# DSM verifies these two fields, so they must reflect the real payload.
+CHECKSUM="$(md5sum "${SPK_DIR}/package.tgz" | cut -d' ' -f1)"
+EXTRACTSIZE="$(du -sk "${STAGE}" | cut -f1)"
+{
+    echo "checksum=\"${CHECKSUM}\""
+    echo "extractsize=\"${EXTRACTSIZE}\""
+} >> "${SPK_DIR}/INFO"
+
+# ---- 6) Scripts and configuration ----------------------------------------
+cp -r "${SCRIPT_DIR}/scripts"        "${SPK_DIR}/"
+cp -r "${SCRIPT_DIR}/conf"           "${SPK_DIR}/"
+cp -r "${SCRIPT_DIR}/ui"             "${SPK_DIR}/"
+cp -r "${SCRIPT_DIR}/WIZARD_UIFILES" "${SPK_DIR}/" 2>/dev/null || true
+chmod 755 "${SPK_DIR}/scripts/"*
+
+# CRLF line endings make DSM's shell fail these scripts silently, so normalise.
+find "${SPK_DIR}/scripts" -type f -exec sed -i 's/\r$//' {} +
 
 # ---- 7) Wrap into the .spk (uncompressed tar, as DSM requires) ------------
 info "packaging ${OUT##*/} ..."
