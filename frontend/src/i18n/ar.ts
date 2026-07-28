@@ -323,6 +323,14 @@ const ar: Catalogue<typeof en> = {
     resultTitle: 'نتيجة المهمة',
   },
 
+  files: {
+    pickFolder: 'اختر مجلداً',
+    useThisFolder: 'استخدم هذا المجلد',
+    notReadable: 'لا يستطيع Cadenza قراءته',
+    noSubfolders: 'لا مجلدات فرعية هنا',
+    truncated: 'تُعرض أول 500 مجلد فقط.',
+  },
+
   logs: {
     title: 'سجل العمليات',
     subtitle: 'أثر كامل لكل تغيير جرى على ملفاتك',
@@ -384,7 +392,10 @@ const ar: Catalogue<typeof en> = {
     appleTitle: 'Apple Music',
     teamId: 'Team ID',
     keyId: 'Key ID',
-    p8Path: 'مسار ملف ‎.p8 داخل الحاوية',
+    p8File: 'مفتاح التوقيع (.p8)',
+    p8Hint: 'ارفع ملف AuthKey_XXXXXXXXXX.p8 الذي نزّلته من بوابة مطوّري أبل. يحفظه Cadenza في مجلد بياناته، لا يقرأه غيره، ولا يعرضه مرة أخرى.',
+    removeFile: 'إزالة',
+    browse: 'استعراض…',
     storefrontHint: 'رمز المتجر (sa للسعودية، eg لمصر، us لأمريكا …)',
   },
 

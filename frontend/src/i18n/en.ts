@@ -323,6 +323,14 @@ const en = {
     resultTitle: 'Job result',
   },
 
+  files: {
+    pickFolder: 'Choose a folder',
+    useThisFolder: 'Use this folder',
+    notReadable: 'not readable by Cadenza',
+    noSubfolders: 'No sub-folders here',
+    truncated: 'Only the first 500 folders are shown.',
+  },
+
   logs: {
     title: 'Activity log',
     subtitle: 'A complete trail of every change made to your files',
@@ -384,7 +392,10 @@ const en = {
     appleTitle: 'Apple Music',
     teamId: 'Team ID',
     keyId: 'Key ID',
-    p8Path: 'Path to the .p8 key inside the container',
+    p8File: 'Signing key (.p8)',
+    p8Hint: 'Upload the AuthKey_XXXXXXXXXX.p8 you downloaded from the Apple Developer portal. Cadenza stores it in its own data folder, readable only by itself, and never shows it again.',
+    removeFile: 'Remove',
+    browse: 'Browse…',
     storefrontHint: 'Storefront code (us, gb, sa, eg, …)',
   },
 

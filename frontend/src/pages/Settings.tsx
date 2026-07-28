@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
+import FolderPicker from '../components/FolderPicker'
 import { useI18n } from '../i18n'
 
 type Health = {
@@ -14,6 +15,94 @@ type Health = {
 
 const SECRET_FIELDS = ['acoustid_api_key', 'discogs_token', 'lastfm_api_key'] as const
 const TEMPLATE_FIELDS = '{albumartist} {artist} {album} {year} {track} {disc} {title} {genre}'
+
+type Credential = { description: string; present: boolean; path: string; size: number }
+
+/**
+ * Upload a credential file rather than asking for a path to one.
+ *
+ * The Apple Music signing key had to be copied onto the NAS by hand, into a
+ * folder the user had to find for themselves — and on the package it could not
+ * work at all, because the default path was the container's layout. Cadenza
+ * now stores it in its own data folder, 0600, and never reads it back out.
+ */
+function CredentialField({ kind, label, hint }: {
+  kind: string; label: string; hint: string
+}) {
+  const { t, n } = useI18n()
+  const [state, setState] = useState<Credential | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [browsing, setBrowsing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const load = () => api.get<Record<string, Credential>>('/files/credentials')
+    .then((all) => setState(all[kind] ?? null))
+    .catch(() => {})
+  useEffect(() => { load() }, [])
+
+  const send = async (file: File) => {
+    setBusy(true); setError(null)
+    try {
+      await api.upload(`/files/credentials/${kind}`, file)
+      await load()
+    } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
+  }
+
+  /** Take a copy of a file the user has already put on the NAS. Copied, not
+   *  referenced: a referenced file can be moved or renamed afterwards and then
+   *  fails somewhere else entirely. */
+  const importFrom = async (path: string) => {
+    setBusy(true); setError(null)
+    try {
+      await api.post(`/files/credentials/${kind}/import`, { path })
+      await load()
+    } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
+  }
+
+  const remove = async () => {
+    setBusy(true); setError(null)
+    try {
+      await api.del(`/files/credentials/${kind}`)
+      await load()
+    } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="field" style={{ display: 'block' }}>
+      <span>
+        {label} — <span className={`tag ${state?.present ? 'ok' : ''}`}>
+          {state?.present ? t('settings.configured') : t('settings.notConfigured')}
+        </span>
+      </span>
+      <p className="muted" style={{ fontSize: 12, margin: '4px 0' }}>{hint}</p>
+      <div className="toolbar" style={{ marginBottom: 0, flexWrap: 'wrap' }}>
+        <input type="file" disabled={busy}
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) send(f); e.target.value = '' }} />
+        {/* Two ways in, because both are natural: upload from the machine you
+            are sitting at, or pick a file you already copied to the NAS. */}
+        <button className="btn sm" disabled={busy} onClick={() => setBrowsing(!browsing)}>
+          {t('settings.browse')}
+        </button>
+        {state?.present && (
+          <button className="btn sm danger" disabled={busy} onClick={remove}>
+            {t('settings.removeFile')}
+          </button>
+        )}
+      </div>
+      {browsing && (
+        <FolderPicker credential={kind}
+          onPick={(path) => importFrom(path)}
+          onClose={() => setBrowsing(false)} />
+      )}
+      {state?.present && (
+        <p className="muted mono truncate" style={{ fontSize: 12, direction: 'ltr' }}>
+          {state.path} · {n(state.size)} B
+        </p>
+      )}
+      {error && <p className="banner" style={{ marginTop: 6 }}>{error}</p>}
+    </div>
+  )
+}
 
 export default function Settings() {
   const { t } = useI18n()
@@ -214,11 +303,13 @@ export default function Settings() {
             <input type="text" value={value('apple_key_id') ?? ''}
               onChange={(e) => set('apple_key_id', e.target.value)} />
           </label>
-          <label className="field">
-            <span>{t('settings.p8Path')}</span>
-            <input type="text" className="mono" value={value('apple_private_key_path') ?? ''}
-              onChange={(e) => set('apple_private_key_path', e.target.value)} />
-          </label>
+          {/* Was an editable text field for apple_private_key_path, which the
+              policy locks -- so every save answered 400 and discarded the rest
+              of the form. And the path it showed was the container's
+              /config/AuthKey.p8, which does not exist on the package. Upload
+              the key instead: Cadenza puts it in its own data folder, 0600. */}
+          <CredentialField kind="apple_private_key"
+            label={t('settings.p8File')} hint={t('settings.p8Hint')} />
           <label className="field">
             <span>{t('settings.storefrontHint')}</span>
             <input type="text" value={value('apple_storefront') ?? ''}

@@ -4,6 +4,49 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.4.0] - 2026-07-28
+
+### Fixed
+
+- **Converting no longer throws your metadata away.** Measured on a DS1821+
+  across all twelve presets, before and after:
+
+  | preset | cover before | cover after |
+  |---|---|---|
+  | `opus_160`, `opus_96` | lost | kept |
+  | `ogg_q6` | lost | kept |
+  | `wav` | title, artist, album and cover all lost | all kept |
+
+  Three separate causes. `write_tags` did not know what an Opus file is, so
+  converting to the preset Cadenza itself recommends as the most efficient
+  raised `writing tags is not supported for .opus` — logged once, and the
+  conversion still reported success. The cover was embedded only for FLAC, so
+  Ogg Vorbis lost it too, silently, because the tags themselves were written.
+  And the reader dispatched on the tag class's *name*: WAV and AIFF keep ID3 in
+  a container chunk, which mutagen represents as `_WaveID3`, so a correctly
+  tagged WAV read back empty.
+
+  Everything in an Ogg container carries Vorbis comments, Opus included; covers
+  now go in the `metadata_block_picture` comment that Ogg players expect; and
+  the reader dispatches with `isinstance`.
+
+### Added
+
+- **Upload a credential file from Settings, or browse to one already on the
+  NAS.** The Apple Music signing key had to be copied onto the NAS by hand into
+  a folder the user had to find for themselves. Cadenza now takes the file
+  directly, stores it in its own data folder at `0600` through the same writer
+  as every other secret, and never reads it back out. Files picked on the NAS
+  are copied rather than referenced, so nothing breaks later when the original
+  is moved.
+- **A folder browser**, deliberately narrow: directories only, rooted in the
+  library, the data folder and the DSM volumes, with system paths denied
+  outright. File names appear only when the caller names a known credential,
+  and then only that credential's extensions — "the `.p8` files in this folder"
+  is what the user is already looking for; "everything in this folder" is their
+  documents. Folders the service account cannot enter are shown disabled rather
+  than hidden, because that is the one thing the user has to go and fix.
+
 ## [2.3.1] - 2026-07-28
 
 ### Fixed

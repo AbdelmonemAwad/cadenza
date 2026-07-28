@@ -1,6 +1,7 @@
 """Unified tag reading and writing across ID3v1/v2, Vorbis, MP4/iTunes and ASF/WMA."""
 from __future__ import annotations
 
+import base64
 import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -31,8 +32,16 @@ from mutagen.id3 import (
 )
 from mutagen.mp3 import MP3
 from mutagen.mp4 import MP4, MP4Cover
+from mutagen.oggflac import OggFLAC
+from mutagen.oggopus import OggOpus
 from mutagen.oggvorbis import OggVorbis
 from mutagen.wave import WAVE
+
+# Everything in an Ogg container carries Vorbis comments, Opus included. Opus
+# was missing from this set, so converting to it -- the preset Cadenza itself
+# recommends as the most efficient -- produced a file with no title, no artist,
+# no album and no cover, and said so only in a log line nobody reads.
+VORBIS_COMMENT_FORMATS = (FLAC, OggVorbis, OggOpus, OggFLAC)
 
 # Fields that count toward tag completeness, and how much each is worth.
 _COMPLETENESS_WEIGHTS: dict[str, float] = {
@@ -98,9 +107,15 @@ def read_tags(path: Path) -> TagSet:
     if audio is None:
         return TagSet()
 
-    if isinstance(audio, MP3) or (audio.tags.__class__.__name__ == "ID3" if audio.tags else False):
+    # isinstance, not a comparison of the class *name*. WAV and AIFF keep ID3
+    # in a container chunk, and mutagen represents those as subclasses --
+    # _WaveID3, _IFFID3 -- whose __name__ is not "ID3". So a tagged WAV fell
+    # through to the generic reader, which looks for Vorbis-style keys and
+    # finds none: every WAV Cadenza produced read back with no title, no
+    # artist and no album, however carefully it had been tagged.
+    if isinstance(audio, MP3) or isinstance(audio.tags, ID3):
         return _read_id3(path, audio)
-    if isinstance(audio, (FLAC, OggVorbis)):
+    if isinstance(audio, VORBIS_COMMENT_FORMATS):
         return _read_vorbis(audio)
     if isinstance(audio, MP4):
         return _read_mp4(audio)
@@ -338,12 +353,17 @@ def write_tags(path: Path, tags: TagSet, artwork: bytes | None = None,
 
     if isinstance(audio, MP3) or path.suffix.lower() in (".mp3", ".aac"):
         _write_id3(path, tags, artwork, artwork_mime)
-    elif isinstance(audio, (FLAC, OggVorbis)):
+    elif isinstance(audio, VORBIS_COMMENT_FORMATS):
         _write_vorbis(audio, tags, artwork, artwork_mime)
     elif isinstance(audio, MP4):
         _write_mp4(audio, tags, artwork, artwork_mime)
     elif isinstance(audio, ASF):
         _write_asf(audio, tags)
+    elif isinstance(audio, WAVE):
+        # WAV carries ID3 in a RIFF chunk. Writing it through a bare ID3(path)
+        # would append the tag to the end of the file instead, where most
+        # players do not look for it.
+        _write_wave(audio, tags, artwork, artwork_mime)
     else:
         raise ValueError(f"writing tags is not supported for {path.suffix}")
 
@@ -353,7 +373,20 @@ def _write_id3(path: Path, t: TagSet, art: bytes | None, mime: str) -> None:
         id3 = ID3(str(path))
     except ID3NoHeaderError:
         id3 = ID3()
+    _fill_id3(id3, t, art, mime)
+    # v2.3 is understood by a wider range of hardware players than v2.4.
+    id3.save(str(path), v2_version=3)
 
+
+def _write_wave(audio, t: TagSet, art: bytes | None, mime: str) -> None:
+    """WAV keeps ID3 in a RIFF chunk, which only the WAVE object writes."""
+    if audio.tags is None:
+        audio.add_tags()
+    _fill_id3(audio.tags, t, art, mime)
+    audio.save()
+
+
+def _fill_id3(id3, t: TagSet, art: bytes | None, mime: str) -> None:
     def setf(frame_cls, value, **kw):
         if value in (None, ""):
             return
@@ -389,9 +422,6 @@ def _write_id3(path: Path, t: TagSet, art: bytes | None, mime: str) -> None:
         id3.delall("APIC")
         id3.add(APIC(encoding=3, mime=mime, type=3, desc="Cover", data=art))
 
-    # v2.3 is understood by a wider range of hardware players than v2.4.
-    id3.save(str(path), v2_version=3)
-
 
 def _write_vorbis(audio, t: TagSet, art: bytes | None, mime: str) -> None:
     mapping = {
@@ -413,13 +443,22 @@ def _write_vorbis(audio, t: TagSet, art: bytes | None, mime: str) -> None:
         if v not in (None, ""):
             audio[k] = [v]
 
-    if art and isinstance(audio, FLAC):
-        audio.clear_pictures()
+    if art:
         picture = Picture()
         picture.type, picture.mime, picture.data = 3, mime, art
         picture.width = image_width(art) or 0
         picture.height = picture.width
-        audio.add_picture(picture)
+        if isinstance(audio, FLAC):
+            audio.clear_pictures()
+            audio.add_picture(picture)
+        else:
+            # An Ogg stream has no picture block. The cover goes in a comment,
+            # as the base64 of the same FLAC picture structure -- which is what
+            # every Ogg player expects. Without this branch the artwork was
+            # dropped for Vorbis as well as Opus, silently: the tags were
+            # written, the cover simply was not.
+            audio["metadata_block_picture"] = [
+                base64.b64encode(picture.write()).decode("ascii")]
     audio.save()
 
 
