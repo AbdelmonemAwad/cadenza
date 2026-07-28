@@ -13,7 +13,7 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from app.core.secretfile import tighten, write_private_text
 
 APP_NAME = "Cadenza"
-APP_VERSION = "2.8.0"   # kept in step with the VERSION file at the repo root
+APP_VERSION = "2.9.0"   # kept in step with the VERSION file at the repo root
 
 AUDIO_EXTENSIONS: frozenset[str] = frozenset({
     ".mp3", ".flac", ".wav", ".aac", ".m4a", ".m4b", ".alac",
