@@ -4,6 +4,7 @@ from app.api.deps import current_user
 from app.api.v1 import (
     apple,
     auth,
+    cleanup,
     convert,
     dashboard,
     duplicates,
@@ -31,6 +32,7 @@ protected.include_router(duplicates.router, prefix="/duplicates", tags=["duplica
 protected.include_router(metadata.router, prefix="/metadata", tags=["metadata"])
 protected.include_router(convert.router, prefix="/convert", tags=["convert"])
 protected.include_router(quarantine.router, prefix="/quarantine", tags=["quarantine"])
+protected.include_router(cleanup.router, prefix="/cleanup", tags=["cleanup"])
 protected.include_router(jobs.router, prefix="/jobs", tags=["jobs"])
 protected.include_router(files.router, prefix="/files", tags=["files"])
 protected.include_router(apple.router, prefix="/apple", tags=["apple-music"])

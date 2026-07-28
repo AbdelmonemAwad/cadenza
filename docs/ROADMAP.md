@@ -80,6 +80,14 @@ root is the single source of truth and every change that ships bumps it.
 - Quality scores update when the tags do.
 - `succeeded` and `failed` on a job are real numbers.
 
+### Tidying — 2.10.0
+
+- Six opt-in categories for what a library leaves behind: empty folders,
+  orphaned sidecars, Synology caches, half-written files, index entries for
+  files that are gone, and quarantine records whose file has vanished.
+- It never removes an audio file, checked twice; anything not obviously
+  worthless goes to quarantine rather than being deleted.
+
 ### Statistics and the log — 2.9.0
 
 - A Statistics page over a window you choose: library totals, activity per day,
@@ -123,13 +131,6 @@ Add and remove library paths from Settings rather than setting one at install
 time. Every containment check, the scanner, the organizer and the quarantine
 mirror assume a single root today, so this is a real change rather than a new
 field — and it needs the schema migrations that 2.2.0 introduced.
-
-### Cleaning and tidying options
-
-A set of explicit choices for what "tidy up" means: empty folders, orphaned
-`.lrc` and cover files, Synology's `@eaDir` leftovers, files that no longer
-have a track row, and folders left behind by a move. Preview first, quarantine
-rather than delete, as everywhere else.
 
 ### Integration setup guidance
 

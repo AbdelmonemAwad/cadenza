@@ -35,6 +35,7 @@ const ar: Catalogue<typeof en> = {
     apple: 'Apple Music',
     jobs: 'المهام والجدولة',
     logs: 'سجل العمليات',
+    cleanup: 'التنظيف',
     statistics: 'الإحصائيات',
     settings: 'الإعدادات',
   },
@@ -330,6 +331,24 @@ const ar: Catalogue<typeof en> = {
     notReadable: 'لا يستطيع Cadenza قراءته',
     noSubfolders: 'لا مجلدات فرعية هنا',
     truncated: 'تُعرض أول 500 مجلد فقط.',
+  },
+
+  cleanup: {
+    title: 'التنظيف',
+    subtitle: 'أزل ما تخلّفه مكتبة عاشت طويلاً — لا الموسيقى نفسها أبداً',
+    choose: 'ما الذي تريد تنظيفه؟',
+    preview: 'أرِني ما سيُزال',
+    previewFirst: 'لا يُزال شيء قبل أن تطّلع على القائمة.',
+    run: 'أزلها',
+    started: 'بدأ التنظيف كمهمة {id}.',
+    found: '{count} عنصراً يمكن إزالته',
+    nothingToDo: 'لا شيء لتنظيفه. مكتبتك نظيفة.',
+    refused: 'مرفوض، عمداً:',
+    colCategory: 'النوع',
+    colCount: 'العدد',
+    colSize: 'الحجم',
+    whatExactly: 'ما هو بالضبط',
+    rowOnly: 'سجل فهرسة',
   },
 
   stats: {

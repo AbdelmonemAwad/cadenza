@@ -86,6 +86,50 @@ class QuarantineManager:
         await self.session.flush()
         return item
 
+    async def quarantine_file(self, path: Path, reason: str, *,
+                              job_id: int | None = None) -> QuarantineItem:
+        """Quarantine a file that has no Track row.
+
+        The cleanup pass removes sidecars, not music: a `.lrc` whose album has
+        gone, a stray `cover.jpg`. Those have no row in `tracks`, so they
+        cannot go through `quarantine()` -- but they are still someone's
+        hand-written lyrics as far as this application knows, and deleting them
+        outright would be the one thing the rest of the project refuses to do.
+
+        Audio is refused here as well as by the caller. This is the function
+        that does the moving, so this is where the guarantee has to hold.
+        """
+        from app.config import AUDIO_EXTENSIONS
+
+        if path.suffix.lower() in AUDIO_EXTENSIONS:
+            raise QuarantineError(
+                f"{path.name}: use quarantine() for audio, so the track row moves with it")
+        if not path.is_file():
+            raise QuarantineError(f"file not found: {path}")
+
+        dest = self._dest_for(path)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        size = path.stat().st_size
+        try:
+            shutil.move(str(path), str(dest))
+        except OSError as exc:
+            raise QuarantineError(f"could not move into quarantine: {exc}") from exc
+
+        item = QuarantineItem(
+            original_path=str(path), quarantine_path=str(dest),
+            size_bytes=size, reason=reason,
+            purge_after=datetime.now(UTC).replace(tzinfo=None)
+            + timedelta(days=self.s.quarantine_retention_days),
+        )
+        self.session.add(item)
+        self.session.add(AuditLog(
+            action="quarantine", level="info", job_id=job_id,
+            src_path=str(path), dst_path=str(dest), reversible=True,
+            detail={"reason": reason, "bytes": size, "sidecar": True},
+        ))
+        await self.session.flush()
+        return item
+
     def _dest_for(self, src: Path) -> Path:
         """Mirror the original tree inside quarantine so restores are obvious.
 
