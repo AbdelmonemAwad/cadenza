@@ -49,10 +49,48 @@ class ScanStats:
 
 def iter_audio_files(root: Path, follow_symlinks: bool = False,
                      skip_hidden: bool = True) -> Iterator[Path]:
+    """Every audio file under `root`, never including the quarantine.
+
+    The quarantine exclusion is not optional and does not depend on the folder
+    being hidden. On the Synology package the quarantine lives *inside* the
+    library -- `start-stop-status` sets
+    `CADENZA_QUARANTINE_ROOT="${CADENZA_MUSIC_ROOT}/.cadenza-quarantine"` -- and
+    the only thing keeping it out of a scan was the leading dot plus
+    `skip_hidden`, which is writable from the Settings page.
+
+    Turning that off is a reasonable thing to do (someone keeps music in a
+    dotted folder) and it started this, with no attacker and no mistake beyond
+    ticking a box:
+
+      1. the scan indexes every quarantined file as an ACTIVE track
+      2. find_exact_file groups them with their originals by sha256, at
+         confidence 1.0
+      3. applying that plan quarantines the loser -- possibly the copy that is
+         already in quarantine -- to a new stamped destination
+      4. the original QuarantineItem.quarantine_path now points at nothing
+      5. the cleanup pass reports it as a stale record and deletes the row,
+         which was the only thing remembering where the file came from
+
+    The file survives and nothing can say where it belongs. Every step after
+    the first follows correctly from a premise that must never be true, so the
+    fix belongs at the first step -- here, in the walk itself, rather than in
+    each of the four things that walk the library.
+
+    A renamed quarantine is excluded too: the rule follows the setting, not a
+    folder name, so pointing it at `<library>/_removed` -- no leading dot, no
+    help from skip_hidden -- is just as safe.
+    """
+    quarantine = Path(get_settings().quarantine_root).resolve(strict=False)
+
     for dirpath, dirnames, filenames in os.walk(root, followlinks=follow_symlinks):
+        if Path(dirpath).resolve(strict=False) == quarantine:
+            dirnames[:] = []
+            continue
         dirnames[:] = [
             d for d in dirnames
-            if d not in _SKIP_DIRS and not (skip_hidden and d.startswith("."))
+            if d not in _SKIP_DIRS
+            and not (skip_hidden and d.startswith("."))
+            and Path(dirpath, d).resolve(strict=False) != quarantine
         ]
         for fn in filenames:
             if skip_hidden and fn.startswith("."):

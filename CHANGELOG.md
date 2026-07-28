@@ -4,6 +4,40 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.10.2] - 2026-07-28
+
+### Fixed
+
+- **A scan can no longer index your quarantine as library.** On the Synology
+  package the quarantine lives *inside* the library — `start-stop-status` sets
+  `CADENZA_QUARANTINE_ROOT="${CADENZA_MUSIC_ROOT}/.cadenza-quarantine"` — and
+  the only thing keeping it out of a scan was the leading dot plus
+  `skip_hidden`, which is a checkbox on the Settings page.
+
+  Turning that off is a reasonable thing to do, and it started this by itself,
+  with no attacker and no mistake beyond ticking a box:
+
+  1. the scan indexes every quarantined file as an active track
+  2. exact-file matching groups them with their originals by SHA-256, at
+     confidence 1.0
+  3. applying that plan quarantines the "loser" — possibly the copy that is
+     already in quarantine — to a **new** stamped destination
+  4. the original quarantine record now points at nothing
+  5. the tidy-up pass reports it as a stale record and deletes the row, which
+     was the only thing remembering where the file came from
+
+  The file survives and nothing can say where it belongs. The exclusion is now
+  in the walk itself, follows the setting rather than a folder name, and does
+  not depend on the folder being hidden — so a quarantine at
+  `<library>/_removed` is just as safe.
+
+- **Tidying up no longer walks into the quarantine or the data folder.** Both
+  can sit inside the library — the install wizard accepts any path for the data
+  folder — and both are full of exactly the shapes it looks for. It would have
+  quarantined Cadenza's own logs (`.log` counts as a sidecar, and that folder
+  holds no audio) and the artwork cache's `cover.jpg`, and offered to remove the
+  records of files you had already quarantined.
+
 ## [2.10.1] - 2026-07-28
 
 ### Fixed
