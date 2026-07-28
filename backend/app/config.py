@@ -13,7 +13,7 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from app.core.secretfile import tighten, write_private_text
 
 APP_NAME = "Cadenza"
-APP_VERSION = "2.3.0"   # kept in step with the VERSION file at the repo root
+APP_VERSION = "2.3.1"   # kept in step with the VERSION file at the repo root
 
 AUDIO_EXTENSIONS: frozenset[str] = frozenset({
     ".mp3", ".flac", ".wav", ".aac", ".m4a", ".m4b", ".alac",
@@ -117,7 +117,12 @@ class Settings(BaseSettings):
     musicbrainz_contact: str = "admin@example.com"
     apple_team_id: str = ""
     apple_key_id: str = ""
-    apple_private_key_path: Path = Path("/config/AuthKey.p8")
+    # None means "in the data folder", resolved by `apple_key_file` below. It
+    # used to default to the literal /config/AuthKey.p8, which is the
+    # container's layout: on the Synology package the data folder is somewhere
+    # else entirely, so the key could never be found and Apple Music could
+    # never be configured there at all.
+    apple_private_key_path: Path | None = None
     apple_storefront: str = "us"
 
     provider_order: list[str] = Field(
@@ -151,6 +156,17 @@ class Settings(BaseSettings):
     def overrides_file(self) -> Path:
         return self.config_dir / "settings.json"
 
+    @property
+    def apple_key_file(self) -> Path:
+        """Where the Apple Music signing key actually is.
+
+        Follows an explicitly configured path when a deployment pinned one, and
+        otherwise sits in this install's data folder -- which is what makes it
+        findable on the Synology package, where the data folder is not /config.
+        """
+        return Path(self.apple_private_key_path) if self.apple_private_key_path \
+            else self.config_dir / "AuthKey.p8"
+
     def ua_header(self) -> str:
         """MusicBrainz requires a contact address in the User-Agent."""
         return f"{self.user_agent} ( {self.musicbrainz_contact} )"
@@ -171,7 +187,7 @@ class Settings(BaseSettings):
         for name in ("settings.json", "auth.json", "secret_key",
                      "apple_user_token.json", "initial-password.txt"):
             tighten(self.config_dir / name)
-        tighten(Path(self.apple_private_key_path))
+        tighten(self.apple_key_file)
 
 
 _lock = threading.RLock()
