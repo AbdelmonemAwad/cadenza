@@ -30,6 +30,7 @@ const en = {
     apple: 'Apple Music',
     jobs: 'Jobs & Schedule',
     logs: 'Activity Log',
+    statistics: 'Statistics',
     settings: 'Settings',
   },
 
@@ -329,6 +330,30 @@ const en = {
     notReadable: 'not readable by Cadenza',
     noSubfolders: 'No sub-folders here',
     truncated: 'Only the first 500 folders are shown.',
+  },
+
+  stats: {
+    title: 'Statistics',
+    subtitle: 'What Cadenza has been doing, and what it says about it',
+    lastDays: 'Last {days} days',
+    tracks: 'Tracks',
+    size: 'Library size',
+    jobsRun: 'Jobs run',
+    failed: 'failed',
+    reclaimable: 'Reclaimable',
+    inQuarantine: 'in quarantine',
+    activity: 'Activity',
+    activityHint: 'Recorded actions per day. Every bar is one day; hover for the count.',
+    today: 'today',
+    coverage: 'Coverage',
+    lossless: 'Lossless',
+    withArtwork: 'With cover art',
+    withLyrics: 'With lyrics',
+    byJob: 'Jobs by kind',
+    logTitle: 'Application log',
+    logHint: 'The tail of cadenza.log. Provider API keys are removed before a line is written.',
+    logFilter: 'Contains…',
+    refresh: 'Refresh',
   },
 
   logs: {

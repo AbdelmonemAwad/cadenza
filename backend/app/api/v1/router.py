@@ -13,6 +13,7 @@ from app.api.v1 import (
     metadata,
     quarantine,
     settings,
+    statistics,
 )
 
 api_router = APIRouter()
@@ -34,5 +35,7 @@ protected.include_router(jobs.router, prefix="/jobs", tags=["jobs"])
 protected.include_router(files.router, prefix="/files", tags=["files"])
 protected.include_router(apple.router, prefix="/apple", tags=["apple-music"])
 protected.include_router(settings.router, prefix="/settings", tags=["settings"])
+protected.include_router(statistics.router, prefix="/statistics",
+                         tags=["statistics"])
 
 api_router.include_router(protected)

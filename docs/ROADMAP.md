@@ -61,34 +61,57 @@ root is the single source of truth and every change that ships bumps it.
 - A partial group restore no longer strands files with no way back.
 - A rescan no longer erases the Apple Music and MusicBrainz ids it just found.
 
+### The interface stopped disagreeing with the application — 2.6.0
+
+- The Library page reloads when the scan it started finishes.
+- Timestamps are shown in your timezone rather than shifted by your UTC offset.
+- A settings change reaches the job runner without a restart.
+- Jobs left "running" by a restart are closed out.
+- You can change your password: the form existed and no page rendered it.
+
+### Numbers that were not true — 2.7.0 and 2.8.0
+
+- Duplicate detection was discarding up to 100% of pairs inside its own
+  tolerance, because the blocking window was narrower than the comparison.
+- An ignored duplicate group stays ignored.
+- The library list shows the library, not quarantined and missing rows too.
+- Search no longer stops at 5000 and reports that as the total.
+- The year written to your files matches the year Cadenza shows.
+- Quality scores update when the tags do.
+- `succeeded` and `failed` on a job are real numbers.
+
+### Statistics and the log — 2.9.0
+
+- A Statistics page over a window you choose: library totals, activity per day,
+  coverage for lossless/artwork/lyrics, jobs by kind and state, and space in
+  quarantine or reclaimable.
+- `cadenza.log` readable from the interface, filterable by level and substring.
+  The endpoint takes no path parameter and can only ever open the file the
+  application is writing.
+
 ---
 
 ## In progress
 
 An audit of every feature area produced 51 confirmed defects, each verified by
-an independent pass before it was accepted. The data-integrity ones are fixed;
-these are the rest, in the order they are being worked through.
+an independent pass before it was accepted. Thirty have been fixed and shipped
+in 2.5.0 through 2.8.0 — the data-integrity ones first, then the places where
+the interface and the application disagreed, then the wrong numbers.
 
-| | area | what you see |
-|---|---|---|
-| ▸ | Library | the page does not reload when the scan it started finishes, so it looks like nothing happened |
-| ▸ | Jobs | timestamps are shifted by the viewer's UTC offset everywhere in the app |
-| ▸ | Settings | the password-change form exists but no page renders it |
-| ▸ | Settings | number fields offer ranges the API rejects, and one bad field fails the whole save |
-| ▸ | Jobs | a settings change does not reach the job runner until the package restarts |
-| ▸ | Jobs | jobs left "running" by a restart are never closed out |
-| | Library | search silently drops matches past 5000 and reports a wrong total |
-| | Library | the track count includes quarantined, missing and corrupt rows |
-| | Duplicates | the metadata layer blocks on 5-second buckets but compares with a 7-second tolerance |
-| | Duplicates | an ignored group comes back on the next analysis |
-| | Quarantine | the page shows at most 200 items with no pager |
-| | Metadata | enrichment writes a different year than the one it voted for |
-| | Metadata | Discogs' relevance check can never reject a release |
-| | Metadata | tracks are marked as having artwork when none was written |
-| | Apple Music | "Matched tracks" is never refreshed after a match run |
-| | Dashboard | "Incomplete albums" counts only files carrying a track-total tag |
-| | Jobs | `succeeded` and `failed` are always 0 — nothing writes them |
-| | Organize | progress sits at 0/N for the whole run |
+What is left, in the order it is being worked through:
+
+| area | what you see |
+|---|---|
+| Metadata | Discogs' relevance check can never reject a release: it compares the searched title against itself |
+| Apple Music | "Matched tracks" is not refreshed after a match run |
+| Apple Music | "Import and match" stores its result where nothing reads it |
+| Apple Music | linking races MusicKit's loader on a fixed 400 ms wait |
+| Dashboard | one failed request replaces the whole page, permanently |
+| Activity log | every fetch error is swallowed and shows an empty, silent table |
+| Library | a scan with an unusable `ffprobe` indexes the whole library as healthy |
+| Jobs | "Started" shows when the job was queued, not when it started |
+| Jobs | schedule actions report nothing when they fail |
+| Duplicates | the header mixes a server-wide count with a saving summed over one page |
 
 ---
 
@@ -107,14 +130,6 @@ A set of explicit choices for what "tidy up" means: empty folders, orphaned
 `.lrc` and cover files, Synology's `@eaDir` leftovers, files that no longer
 have a track row, and folders left behind by a move. Preview first, quarantine
 rather than delete, as everywhere else.
-
-### Usage statistics and a log viewer
-
-A statistics section built on what the database already records — tracks over
-time, storage reclaimed, jobs run, duplicates resolved — and a viewer for
-`cadenza.log`, which currently cannot be read from the interface at all. The
-log is redacted for the three provider keys before it is written; anything
-serving it has to sit behind the session and take no path parameter.
 
 ### Integration setup guidance
 

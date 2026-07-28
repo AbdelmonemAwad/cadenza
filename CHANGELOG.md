@@ -4,6 +4,40 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.9.0] - 2026-07-28
+
+### Added
+
+- **A Statistics page.** The dashboard answers "what does my library look like
+  right now"; nothing answered "what has Cadenza actually been doing". All of
+  it was already in the database and nothing read it. Over a window you choose
+  — 7, 30, 90 or 365 days — it shows the library totals, activity per day with
+  quiet days filled in rather than compressed away, coverage bars for lossless,
+  artwork and lyrics, jobs broken down by kind and state, and how much space is
+  in quarantine or reclaimable.
+
+  The chart is drawn by hand. The frontend has three dependencies and none of
+  them is a charting library, and pulling one in to draw thirty bars would be
+  larger than the rest of the bundle.
+
+- **The application log, readable from the interface.** `cadenza.log` is
+  written to the data folder and there was no way to see it without SSH or File
+  Station and a text editor — so in practice nobody looked, and the one place
+  the application explains itself went unread. It is now on the Statistics
+  page, filterable by level and by substring.
+
+  The endpoint takes **no path parameter**, deliberately: a log viewer that
+  accepts a filename is an arbitrary file read wearing a hat, and this one
+  would be an attractive target because the log is expected to contain paths.
+  The only file it can ever open is the one the application is writing,
+  resolved from settings. Provider API keys are already removed before a line
+  is written — which matters, because two of those APIs require the key in the
+  query string and any HTTP error quotes the full URL.
+
+  It reads the tail rather than the file: the log rotates at 8 MB with five
+  rotations behind it, and loading all of that to show the last screenful would
+  be pointless on a NAS whose memory is shared with everything else on it.
+
 ## [2.8.0] - 2026-07-28
 
 Values derived from other values, where the other value changed and the derived

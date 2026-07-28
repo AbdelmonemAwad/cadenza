@@ -13,6 +13,7 @@ import Library from './pages/Library'
 import Logs from './pages/Logs'
 import Quarantine from './pages/Quarantine'
 import Settings from './pages/Settings'
+import Statistics from './pages/Statistics'
 
 const NAV: { to: string; key: TranslationKey; icon: string }[] = [
   { to: '/dashboard', key: 'nav.dashboard', icon: '▦' },
@@ -23,6 +24,7 @@ const NAV: { to: string; key: TranslationKey; icon: string }[] = [
   { to: '/apple', key: 'nav.apple', icon: '' },
   { to: '/jobs', key: 'nav.jobs', icon: '⏱' },
   { to: '/logs', key: 'nav.logs', icon: '≡' },
+  { to: '/statistics', key: 'nav.statistics', icon: '◔' },
   { to: '/settings', key: 'nav.settings', icon: '⚙' },
 ]
 
@@ -125,6 +127,7 @@ export default function App() {
           <Route path="/apple" element={<AppleMusic />} />
           <Route path="/jobs" element={<Jobs />} />
           <Route path="/logs" element={<Logs />} />
+          <Route path="/statistics" element={<Statistics />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<div className="empty">{t('app.notFound')}</div>} />
         </Routes>

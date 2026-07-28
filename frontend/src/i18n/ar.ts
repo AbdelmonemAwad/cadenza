@@ -35,6 +35,7 @@ const ar: Catalogue<typeof en> = {
     apple: 'Apple Music',
     jobs: 'المهام والجدولة',
     logs: 'سجل العمليات',
+    statistics: 'الإحصائيات',
     settings: 'الإعدادات',
   },
 
@@ -329,6 +330,30 @@ const ar: Catalogue<typeof en> = {
     notReadable: 'لا يستطيع Cadenza قراءته',
     noSubfolders: 'لا مجلدات فرعية هنا',
     truncated: 'تُعرض أول 500 مجلد فقط.',
+  },
+
+  stats: {
+    title: 'الإحصائيات',
+    subtitle: 'ماذا كان Cadenza يفعل، وماذا يقول عن ذلك',
+    lastDays: 'آخر {days} يوماً',
+    tracks: 'المقطوعات',
+    size: 'حجم المكتبة',
+    jobsRun: 'المهام المنفَّذة',
+    failed: 'فشلت',
+    reclaimable: 'قابل للاسترجاع',
+    inQuarantine: 'في الحجر',
+    activity: 'النشاط',
+    activityHint: 'الإجراءات المسجّلة يومياً. كل عمود يوم؛ مرّر المؤشر لترى العدد.',
+    today: 'اليوم',
+    coverage: 'التغطية',
+    lossless: 'بلا فقد',
+    withArtwork: 'لها غلاف',
+    withLyrics: 'لها كلمات',
+    byJob: 'المهام بالنوع',
+    logTitle: 'سجل التطبيق',
+    logHint: 'آخر أسطر cadenza.log. مفاتيح المزوّدين تُزال قبل كتابة أي سطر.',
+    logFilter: 'يحتوي…',
+    refresh: 'تحديث',
   },
 
   logs: {
