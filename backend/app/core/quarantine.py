@@ -174,14 +174,53 @@ class QuarantineManager:
         await self.session.flush()
         return dest
 
-    async def restore_group(self, group_id: int) -> list[Path]:
+    async def restore_group(self, group_id: int) -> dict:
+        """Restore every item in a group, committing each one on its own.
+
+        This used to be `[await self.restore(i.id) for i in items]` inside the
+        caller's single transaction, and the first failure -- one file of the
+        group already gone from the quarantine folder, say -- propagated out to
+        the endpoint, which answered 400 and therefore never committed.
+
+        But `restore` does the irreversible part first: `shutil.move` has
+        already put the earlier files back in the library. So the file was in
+        the music tree, its row still said `restored = false`, it still counted
+        toward the dashboard's quarantine totals, and pressing Restore again
+        answered "quarantined file is missing" -- for ever, because the file it
+        was looking for had already been moved. Stranded, with no way back from
+        the interface.
+
+        Each item now commits as it succeeds, so a failure halfway leaves
+        everything before it correctly recorded, and the failures are returned
+        rather than raised: a partial restore is a real outcome and the user
+        needs to see which ones did not make it.
+        """
         items = (await self.session.execute(
             select(QuarantineItem).where(
                 QuarantineItem.group_id == group_id,
                 QuarantineItem.restored == False,  # noqa: E712
             )
         )).scalars().all()
-        return [await self.restore(i.id) for i in items]
+
+        restored: list[Path] = []
+        failed: list[dict] = []
+        for item in items:
+            item_id = item.id
+            try:
+                dest = await self.restore(item_id)
+                await self.session.commit()
+                restored.append(dest)
+            except QuarantineError as exc:
+                # Raised before anything moved -- the checks in restore() all
+                # run first -- so rolling back strands nothing.
+                await self.session.rollback()
+                failed.append({"id": item_id, "error": str(exc)})
+            except Exception as exc:                       # noqa: BLE001
+                await self.session.rollback()
+                log.exception("restoring quarantine item %s failed", item_id)
+                failed.append({"id": item_id, "error": str(exc)})
+
+        return {"restored": restored, "failed": failed}
 
     # ---------------- Purge ----------------
 

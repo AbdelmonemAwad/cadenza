@@ -481,7 +481,11 @@ async def handle_organize(job_id: int, params: dict, dry_run: bool,
             stmt = stmt.where(Track.id.in_(params["track_ids"]))
         if params.get("path"):
             scope = contained(params["path"], get_settings().music_root)
-            stmt = stmt.where(Track.path.startswith(str(scope)))
+            # The separator belongs in the prefix. Without it, scoping a run to
+            # /music/Rock also reorganised /music/Rockabilly and /music/Rocksteady
+            # -- moving files outside the folder the user chose and pruning
+            # their directories. handle_fingerprint already gets this right.
+            stmt = stmt.where(Track.path.startswith(os.path.join(str(scope), "")))
         tracks = list((await s.execute(stmt)).scalars().all())
 
         organizer = Organizer(s)

@@ -223,9 +223,17 @@ class LibraryScanner:
         row.total_tracks = tags.total_tracks
         row.genre = tags.genre
         row.isrc = tags.isrc
-        row.mb_recording_id = tags.mb_recording_id
-        row.mb_release_id = tags.mb_release_id
-        row.apple_id = tags.apple_id
+        row.mb_recording_id = tags.mb_recording_id or row.mb_recording_id
+        row.mb_release_id = tags.mb_release_id or row.mb_release_id
+        # `or row.apple_id`, like acoustid two lines above. This was an
+        # unconditional overwrite, and tags.apple_id is None for virtually
+        # every file: it is read from the MP4-only `cnID` atom and nothing
+        # here ever writes that atom back. So every rescan of a matched file
+        # -- and enrichment rewrites tags, which changes mtime, which is
+        # exactly what makes the scanner re-process it -- erased the Apple
+        # match Cadenza had just paid an API call to find, and the next
+        # "Match library" run went and found it again.
+        row.apple_id = tags.apple_id or row.apple_id
 
         row.has_artwork = tags.has_artwork or (path.parent / self.s.cover_filename).is_file()
         row.artwork_px = tags.artwork_px

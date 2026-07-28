@@ -91,7 +91,20 @@ class Organizer:
 
         # Sanitise each component separately so the '/' separators survive.
         parts = [sanitize(p) for p in rendered.split("/") if p.strip()]
-        candidate = self.s.music_root / Path(*parts).with_suffix(track.ext)
+
+        # Appended, never with_suffix(). `Path.with_suffix` replaces everything
+        # from the last dot onward, and a song title is full of dots: it turned
+        # "02 - Mr. Brightside" into "02 - Mr.flac", "05 - P.Y.T. (Pretty Young
+        # Thing)" into "05 - P.Y.T.flac" and "03 - Vol. 2 Intro" into
+        # "03 - Vol.flac". The tags survived; the filename did not, and two such
+        # titles in one album then collided and picked up "(2)" as well.
+        #
+        # A template that already ends in {ext} keeps its own extension rather
+        # than getting a second one.
+        name = parts[-1] if parts else sanitize(track.title or "Unknown")
+        if not name.lower().endswith(track.ext.lower()):
+            name += track.ext
+        candidate = self.s.music_root / Path(*parts[:-1], name)
 
         # sanitize() should already make an escape impossible, but the template
         # and the replacement character are both user-controlled settings, so
@@ -110,7 +123,8 @@ class Organizer:
         claimed: set[str] = set()
         for t in tracks:
             try:
-                dst = self._dedupe_target(self.render(t, template), claimed)
+                dst = self._dedupe_target(self.render(t, template), claimed,
+                                          source=t.path)
             except FileExistsError as exc:
                 plans.append(MovePlan(t.id, t.path, t.path, False, str(exc)))
                 continue
@@ -125,18 +139,29 @@ class Organizer:
         return plans
 
     @staticmethod
-    def _dedupe_target(dst: Path, claimed: set[str]) -> Path:
+    def _dedupe_target(dst: Path, claimed: set[str], *,
+                       source: str | None = None) -> Path:
         """A target path not already taken by an existing file or an earlier plan.
 
-        Raises rather than giving up after the last attempt. The old version
+        `source` is the track's current location, and leaving it out is what
+        made a second Organize churn the entire library. A file already sitting
+        at its rendered target occupies that target -- `dst.is_file()` is True
+        because it *is* the file being planned -- so every correctly-placed
+        track was renamed to "… (2)", a third run renamed them back, `skipped`
+        reported 0, and every rename wrote an audit row and broke whatever
+        external playlist pointed at the old name.
+
+        Raises rather than giving up after the last attempt. An older version
         broke out of the loop and returned the still-occupied path, which
         `apply` then handed to `shutil.move` -- overwriting a real file in the
         library with a different track. Refusing to plan the move is the only
         acceptable outcome.
         """
+        own = os.path.normcase(source) if source else None
         base = dst
         for i in range(2, 101):
-            if str(dst).lower() not in claimed and not dst.is_file():
+            if str(dst).lower() not in claimed and (
+                    not dst.is_file() or os.path.normcase(str(dst)) == own):
                 return dst
             dst = base.with_name(f"{base.stem} ({i}){base.suffix}")
         raise FileExistsError(
