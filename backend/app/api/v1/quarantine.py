@@ -56,12 +56,19 @@ async def restore(item_id: int, s: AsyncSession = Depends(get_session)) -> dict:
 
 @router.post("/groups/{group_id}/restore")
 async def restore_group(group_id: int, s: AsyncSession = Depends(get_session)) -> dict:
-    try:
-        paths = await QuarantineManager(s).restore_group(group_id)
-    except QuarantineError as exc:
-        raise HTTPException(400, str(exc)) from exc
-    await s.commit()
-    return {"group_id": group_id, "restored": [str(p) for p in paths]}
+    """Restore a whole group, reporting per item.
+
+    Answers 200 with the failures listed rather than 400 on the first one. The
+    manager commits each restore as it succeeds, so a partial result is a real
+    state of the world, and the old behaviour -- 400, no commit, files already
+    moved -- left rows that could never be restored again.
+    """
+    outcome = await QuarantineManager(s).restore_group(group_id)
+    return {
+        "group_id": group_id,
+        "restored": [str(p) for p in outcome["restored"]],
+        "failed": outcome["failed"],
+    }
 
 
 @router.post("/purge")

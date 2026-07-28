@@ -4,6 +4,45 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.5.0] - 2026-07-28
+
+Five defects found by an audit of every feature area, each one confirmed by an
+independent pass before it was touched. All five damaged something the user had
+already done, and all five reported success while doing it.
+
+### Fixed
+
+- **Organising a tidy library no longer churns it.** A file already sitting at
+  its rendered target counted as an occupant of its own target, so every
+  correctly-placed track was renamed to `… (2)`; a third run renamed them back.
+  `skipped` reported zero, every rename wrote an audit row, and every external
+  playlist, Plex reference and SMB shortcut pointing at the old name broke.
+- **A title containing a full stop keeps it.** `Path.with_suffix` replaces
+  everything from the last dot, so `02 - Mr. Brightside.flac` was written as
+  `02 - Mr.flac`, `05 - P.Y.T. (Pretty Young Thing)` as `05 - P.Y.T.flac`, and
+  `03 - Vol. 2 Intro` as `03 - Vol.flac`. The tags were intact; the filename
+  was destroyed, and two such titles in one album then collided.
+- **A partial group restore no longer strands files.** `restore_group` ran
+  inside the caller's single transaction, so the first failure answered 400 and
+  the commit never happened — but `restore` moves the file before it touches
+  the database. The earlier files were back in the library with rows still
+  saying `restored = false`, still counting toward the dashboard totals, and
+  pressing Restore again answered "quarantined file is missing" for ever,
+  because the file it was looking for had already been moved. Each item now
+  commits as it succeeds and the failures are returned rather than raised: a
+  partial restore is a real outcome and the user needs to see which ones.
+- **A rescan no longer erases your Apple matches.** `row.apple_id =
+  tags.apple_id` was an unconditional overwrite, and `tags.apple_id` is read
+  from the MP4-only `cnID` atom that nothing ever writes back — so the value
+  Cadenza had just paid an API call to find was never in the file to be read
+  again. Enrichment rewrites tags, which changes mtime, which is exactly what
+  makes the scanner re-process a file. The MusicBrainz ids were losing the same
+  way.
+- **Scoping an organize run to one folder stays in that folder.** The prefix
+  carried no separator, so `path: "/music/Rock"` also reorganised
+  `/music/Rockabilly` and `/music/Rocksteady`, moving files outside the folder
+  the user chose and pruning their directories.
+
 ## [2.4.1] - 2026-07-28
 
 ### Added
