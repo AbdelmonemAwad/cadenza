@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import string
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -17,6 +18,11 @@ from app.core.paths import PathEscape, contained
 from app.db.models import AuditLog, Track
 
 log = logging.getLogger(__name__)
+
+# Mirrors the scanner's: this loop is just as long-running and needs the same
+# two things -- something to report to, and something to ask whether to stop.
+ProgressCb = Callable[[int, int, str], Awaitable[None]] | None
+StopCb = Callable[[], bool] | None
 
 # Characters that are legal on Btrfs/ext4 but break over SMB/AFP, so we reject
 # the whole Windows-hostile set regardless of the underlying filesystem.
@@ -169,14 +175,33 @@ class Organizer:
 
     async def apply(self, plans: list[MovePlan], *, dry_run: bool = True,
                     job_id: int | None = None,
-                    tracks_by_id: dict[int, Track] | None = None) -> dict:
+                    tracks_by_id: dict[int, Track] | None = None,
+                    progress: ProgressCb = None,
+                    should_stop: StopCb = None) -> dict:
+        """Carry out the plans.
+
+        `progress` and `should_stop` exist because this loop can run for a
+        quarter of an hour on a large library. Without the first the Jobs page
+        showed 0/N for the whole run and kept showing it afterwards, which is
+        indistinguishable from a job that has hung; without the second the Stop
+        button did nothing while claiming the job was cancelled.
+        """
         moved = skipped = failed = 0
+        stopped = False
         errors: list[str] = []
+        movable = sum(1 for p in plans if p.changed)
+        done = 0
 
         for p in plans:
             if not p.changed:
                 skipped += 1
                 continue
+            if should_stop and should_stop():
+                stopped = True
+                break
+            done += 1
+            if progress and (done == 1 or done % 20 == 0 or done == movable):
+                await progress(done, movable, Path(p.src).name)
             if dry_run:
                 moved += 1
                 continue
@@ -228,7 +253,7 @@ class Organizer:
         if not dry_run:
             await self.session.flush()
         return {"dry_run": dry_run, "moved": moved, "skipped": skipped,
-                "failed": failed, "errors": errors[:50]}
+                "failed": failed, "stopped": stopped, "errors": errors[:50]}
 
     @staticmethod
     def _move_sidecars(src: Path, dst: Path) -> None:

@@ -4,6 +4,50 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.8.0] - 2026-07-28
+
+Values derived from other values, where the other value changed and the derived
+one did not.
+
+### Fixed
+
+- **The year written to your files matches the year Cadenza shows.** `year` and
+  `date` are voted independently, with different trust maps — Discogs is
+  trusted most for the pressing year and less for the full date, deliberately —
+  so they can be decided from different sources. Both are then written to the
+  same ID3 frame, `date or year`, so the file got one and the database and the
+  report showed the other: 1973 in Cadenza, 1972 in every player. A date that
+  disagrees with the voted year is dropped, and the conflict is recorded.
+- **Quality scores update when the tags do.** The score is 20% tag
+  completeness, and enrichment updated the completeness without recomputing the
+  score — so the dashboard's quality figure and every quality-sorted view kept
+  showing the library as it was before enrichment ran, until a full rescan.
+  There is now one definition of the formula rather than a copy on the scanner
+  that enrichment could not reach.
+- **Tracks are only marked as having artwork when artwork was written.** The
+  cover is fetched whenever a provider has one, but stored only if
+  `embed_artwork` or `write_cover_file` is on. The row was marked on the fetch,
+  so with both settings off every enriched track claimed a cover it did not
+  have and the "missing artwork" count fell to zero while nothing changed on
+  disk.
+- **`succeeded` and `failed` on a job are real numbers.** Both columns were
+  returned by the API and rendered in the result panel, and nothing ever wrote
+  them — so every job that had ever run reported 0 and 0 however much it had
+  done.
+- **Organise reports progress and can be stopped.** The only progress call was
+  before the loop started, so the Jobs page showed 0/N for the whole run and
+  kept showing it afterwards — indistinguishable from a job that has hung on a
+  library where the run takes a quarter of an hour. Stopping it now stops it,
+  rather than reporting the job cancelled while it carried on.
+- **Organise reports what it could not do.** The result filtered on
+  `if p.changed`, which excludes exactly the rows that carry a reason — every
+  template error and every "no free target name" was dropped from the summary
+  the user reads, so the run looked like it had simply skipped them.
+- **The quarantine page can reach past the two-hundredth file.** It asked for
+  200 items, discarded the total the endpoint returns, and never sent an
+  offset — so anything beyond that could not be seen, and therefore could not
+  be restored, from the interface at all.
+
 ## [2.7.0] - 2026-07-28
 
 Numbers the application showed that were not true. None of these failed —

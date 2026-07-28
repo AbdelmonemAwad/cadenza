@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import AUDIO_EXTENSIONS, get_settings
 from app.core import audio_probe, fingerprint, hashing
+from app.core.quality import quality_score
 from app.core.tags import read_tags
 from app.db.models import Track, TrackStatus
 
@@ -241,7 +242,10 @@ class LibraryScanner:
         row.has_synced_lyrics = bool(tags.synced_lyrics) or path.with_suffix(".lrc").is_file()
 
         row.tag_completeness = tags.completeness()
-        row.quality_score = self._quality(info, row.tag_completeness)
+        row.quality_score = quality_score(
+            lossless=info.lossless, bitrate=info.bitrate,
+            sample_rate=info.sample_rate, bit_depth=info.bit_depth,
+            tag_completeness=row.tag_completeness)
         row.status = TrackStatus.ACTIVE
         row.error = None
         row.last_scan = datetime.now(UTC)
@@ -263,11 +267,3 @@ class LibraryScanner:
         row.last_scan = datetime.now(UTC)
         self.stats.corrupt += 1
 
-    @staticmethod
-    def _quality(info: audio_probe.AudioInfo, tag_completeness: float) -> float:
-        """Single 0..1 quality figure used for dashboard stats and sorting."""
-        fmt = 1.0 if info.lossless else min((info.bitrate or 0) / 320_000.0, 1.0)
-        sample_rate = min((info.sample_rate or 44100) / 96_000.0, 1.0)
-        depth = min((info.bit_depth or 16) / 24.0, 1.0)
-        return round(0.55 * fmt + 0.15 * sample_rate + 0.10 * depth
-                     + 0.20 * tag_completeness, 4)
