@@ -147,9 +147,30 @@ class LibraryCleaner:
         # will be left with nothing.
         removable_dirs: set[str] = set()
 
+        # Never walk into these, whatever they are configured to.
+        #
+        # On the Synology package the quarantine is *inside* the library, and
+        # the data folder can be too -- the install wizard accepts any path. A
+        # bare os.walk therefore reaches both, and both are full of exactly the
+        # shapes this looks for: quarantine holds orphaned sidecars and the
+        # dated folders left behind after a restore, and the data folder holds
+        # `logs/*.log` (`.log` is in SIDECAR_SUFFIXES, and that folder has no
+        # audio in it) and `cache/artwork/cover.jpg` (which matches the cover
+        # branch exactly).
+        #
+        # So tidying up would have quarantined Cadenza's own logs, and offered
+        # to remove the records of files the user had already quarantined.
+        off_limits = {
+            Path(self.s.quarantine_root).resolve(strict=False),
+            Path(self.s.config_dir).resolve(strict=False),
+        }
+
         for dirpath, dirnames, filenames in os.walk(self.root, topdown=False):
             here = Path(dirpath)
             if here == self.root:
+                continue
+            resolved = here.resolve(strict=False)
+            if resolved in off_limits or any(p in off_limits for p in resolved.parents):
                 continue
 
             name = here.name
