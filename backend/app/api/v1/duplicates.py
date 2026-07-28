@@ -97,8 +97,18 @@ async def override_actions(group_id: int, overrides: list[MemberOverride],
         member = by_track.get(o.track_id)
         if member is None:
             continue
-        member.proposed_action = DupAction(o.action)
-        member.reason = f"{member.reason or ''} (manually overridden)".strip()
+        wanted = DupAction(o.action)
+        # Only when it actually changed. The page sends the whole group on
+        # every edit, so a single dropdown change used to stamp "(manually
+        # overridden)" onto every member -- and re-stamp it on the next edit,
+        # and the next, until the engine's own explanation of why it chose that
+        # copy was buried under repetitions of a note that was not even true of
+        # most of them.
+        if _action(member) == wanted.value:
+            continue
+        member.proposed_action = wanted
+        base = (member.reason or "").replace("(manually overridden)", "").strip()
+        member.reason = f"{base} (manually overridden)".strip()
         changed += 1
 
     keepers = sum(1 for m in group.members if _action(m) == DupAction.KEEP.value)

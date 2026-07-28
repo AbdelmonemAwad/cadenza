@@ -51,19 +51,31 @@ async def list_tracks(
     if q:
         # FTS5 is far faster than LIKE on a large library; fall back if the
         # virtual table is unavailable or the query is not valid FTS syntax.
+        #
+        # A correlated subquery, not a list of ids fetched first. The old form
+        # pulled up to 5000 rowids into Python and passed them to IN(...), so a
+        # library where more than 5000 tracks matched -- searching "the", or an
+        # artist with a large discography -- silently lost everything past the
+        # cap AND reported the capped number as the total, because `total`
+        # counts the same filtered statement. There was no indication that
+        # anything had been dropped.
         try:
-            ids = [r[0] for r in (await s.execute(
-                text("SELECT rowid FROM track_fts WHERE track_fts MATCH :q LIMIT 5000"),
-                {"q": f"{q}*"},
-            )).all()]
-            stmt = stmt.where(Track.id.in_(ids)) if ids else stmt.where(text("0"))
+            matches = select(text("rowid")).select_from(text("track_fts")).where(
+                text("track_fts MATCH :fts_query")).params(fts_query=f"{q}*")
+            stmt = stmt.where(Track.id.in_(matches))
         except Exception:
             like = f"%{q}%"
             stmt = stmt.where(or_(Track.title.like(like), Track.artist.like(like),
                                   Track.album.like(like), Track.path.like(like)))
 
+    # ACTIVE unless the caller asks for something else. The list and its count
+    # used to include quarantined, missing and corrupt rows, so "Tracks" on the
+    # dashboard disagreed with the library page, and files the user had already
+    # moved to quarantine kept appearing in a list of their music.
     if status:
         stmt = stmt.where(Track.status == status)
+    else:
+        stmt = stmt.where(Track.status == TrackStatus.ACTIVE)
     if codec:
         stmt = stmt.where(Track.codec == codec)
     if lossless is not None:
