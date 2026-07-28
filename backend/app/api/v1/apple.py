@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
-from pathlib import Path
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Response
 from pydantic import BaseModel
@@ -60,7 +59,7 @@ def _provider(s: AsyncSession, user_token: str | None = None) -> AppleMusicProvi
 async def status(s: AsyncSession = Depends(get_session)) -> dict:
     cfg = get_settings()
     configured = bool(cfg.apple_team_id and cfg.apple_key_id
-                      and Path(cfg.apple_private_key_path).is_file())
+                      and cfg.apple_key_file.is_file())
     matched = (await s.execute(
         select(func.count(Track.id)).where(Track.apple_id.isnot(None)))).scalar() or 0
     return {"configured": configured, "user_linked": bool(_load_user_token()),

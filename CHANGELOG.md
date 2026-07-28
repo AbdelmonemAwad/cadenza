@@ -4,6 +4,35 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.3.1] - 2026-07-28
+
+### Fixed
+
+- **An unreadable `etc/cadenza.env` no longer makes the package unmanageable.**
+  `.` is a POSIX special built-in: when it fails, the shell exits immediately
+  with a non-zero status, and there is no `|| true` to hang that failure on. So
+  one of these files ending up owned by `root` — which is what happens the
+  moment anyone edits it over SSH with `sudo` — made `start-stop-status` exit 1
+  on *every* invocation. DSM calls `prestop` before an upgrade, got 1, and
+  abandoned the upgrade. Observed on a DS1821+; the reason appeared only in
+  `/var/log/packages/Cadenza.log`:
+
+  ```
+  Begin start-stop-status prestop
+  .../etc/cadenza.env: Permission denied
+  End start-stop-status prestop ret=[1]
+  ```
+
+  Readability is now tested before the built-in is reached, so the package
+  starts on its defaults and writes the problem — and the exact `chown` that
+  fixes it — to the service log.
+- **The Apple Music signing key can be found on the Synology package.**
+  `apple_private_key_path` defaulted to the literal `/config/AuthKey.p8`, which
+  is the container's layout. On the package the data folder is somewhere else
+  entirely, so the key was never found and Apple Music could not be configured
+  at all. It now resolves to this install's own data folder unless a deployment
+  pins a path explicitly.
+
 ## [2.3.0] - 2026-07-28
 
 ### Changed

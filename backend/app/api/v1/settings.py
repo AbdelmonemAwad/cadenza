@@ -98,7 +98,7 @@ async def health() -> dict:
             "discogs": bool(s.discogs_token),
             "lastfm": bool(s.lastfm_api_key),
             "applemusic": bool(s.apple_team_id and s.apple_key_id
-                               and Path(s.apple_private_key_path).is_file()),
+                               and s.apple_key_file.is_file()),
             "lrclib": True,
         },
         "safety": {

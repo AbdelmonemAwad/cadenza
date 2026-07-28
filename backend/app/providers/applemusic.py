@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import logging
 import time
-from pathlib import Path
 
 import jwt
 from rapidfuzz import fuzz
@@ -50,7 +49,7 @@ class AppleMusicProvider(BaseProvider):
     def enabled(self) -> bool:
         s = self.settings
         return bool(s.apple_team_id and s.apple_key_id
-                    and Path(s.apple_private_key_path).is_file())
+                    and s.apple_key_file.is_file())
 
     # ---- Tokens ----
 
@@ -59,7 +58,7 @@ class AppleMusicProvider(BaseProvider):
         if self._dev_token and now < self._dev_exp - TOKEN_REFRESH_MARGIN:
             return self._dev_token
         s = self.settings
-        key_path = Path(s.apple_private_key_path)
+        key_path = s.apple_key_file
         if not key_path.is_file():
             raise ProviderError(f"Apple private key not found: {key_path}")
         exp = int(now) + TOKEN_TTL
