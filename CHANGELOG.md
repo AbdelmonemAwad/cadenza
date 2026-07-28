@@ -4,6 +4,29 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.4.1] - 2026-07-28
+
+### Added
+
+- **An end-to-end walk of the whole application**, run against a database that
+  has been used rather than an empty one. The unit tests cover engines in
+  isolation and the smoke test checks a handful of routes; neither would notice
+  a page reading a field the API stopped returning, a filter that is accepted
+  and ignored, or a feature that only fails once there is data — which is the
+  state every real user is in. It seeds a small library and then lists, filters,
+  drills in, submits and cancels a job, saves settings, quarantines, restores
+  and signs out. Twenty-two read endpoints must answer 200.
+
+### Fixed
+
+- **Asking to purge with permanent deletion off now says so.** The refusal was
+  real but it happened inside the job: the endpoint returned a job id and a
+  200, so the interface said the purge had started and then nothing happened.
+  It is answered at the endpoint now, with the setting to change, while the
+  block inside `QuarantineManager.purge` stays exactly where it was. A dry run
+  is still always accepted — it writes nothing and is how you preview what
+  would go.
+
 ## [2.4.0] - 2026-07-28
 
 ### Fixed
