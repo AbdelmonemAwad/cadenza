@@ -11,19 +11,32 @@ type Stats = {
   items: number; bytes: number; retention_days: number; hard_delete_allowed: boolean
 }
 
+const PAGE = 100
+
 export default function Quarantine() {
   const { t, n, d } = useI18n()
   const [items, setItems] = useState<Item[]>([])
   const [stats, setStats] = useState<Stats | null>(null)
   const [showRestored, setShowRestored] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  const [total, setTotal] = useState(0)
+  const [offset, setOffset] = useState(0)
 
+  // The endpoint has always returned a total and accepted an offset. The page
+  // asked for 200 items, threw the total away and never sent an offset -- so
+  // anything past the two-hundredth quarantined file could not be seen, and
+  // therefore could not be restored, from the interface at all.
   const load = () => {
-    api.get<{ items: Item[] }>(`/quarantine?restored=${showRestored}&limit=200`)
-      .then((r) => setItems(r.items)).catch((e) => setMessage(e.message))
+    const params = new URLSearchParams({
+      restored: String(showRestored), limit: String(PAGE), offset: String(offset),
+    })
+    api.get<{ total: number; items: Item[] }>(`/quarantine?${params}`)
+      .then((r) => { setItems(r.items); setTotal(r.total) })
+      .catch((e) => setMessage(e.message))
     api.get<Stats>('/quarantine/stats').then(setStats).catch(() => {})
   }
-  useEffect(() => { load() }, [showRestored])
+  useEffect(() => { load() }, [showRestored, offset])
+  useEffect(() => { setOffset(0) }, [showRestored])
 
   const restore = async (id: number) => {
     try {
@@ -92,6 +105,22 @@ export default function Quarantine() {
               ))}
             </tbody>
           </table>
+        )}
+
+        {total > PAGE && (
+          <div className="toolbar" style={{ marginTop: 12, marginBottom: 0 }}>
+            <button className="btn sm" disabled={offset === 0}
+              onClick={() => setOffset(Math.max(0, offset - PAGE))}>
+              {t('app.previous')}
+            </button>
+            <span className="muted">
+              {offset + 1}–{Math.min(offset + PAGE, total)} {t('app.of')} {n(total)}
+            </span>
+            <button className="btn sm" disabled={offset + PAGE >= total}
+              onClick={() => setOffset(offset + PAGE)}>
+              {t('app.next')}
+            </button>
+          </div>
         )}
       </div>
     </>

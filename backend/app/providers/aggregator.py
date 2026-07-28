@@ -232,6 +232,29 @@ class MetadataAggregator:
                     f"{o.source}={o.value!r}({o.weight:.2f})" for o in options[:4]
                 ]
 
+        # `year` and `date` are voted independently, with different trust maps
+        # -- Discogs is trusted most for the pressing year and less for the
+        # full date, deliberately. So the two can be decided from different
+        # sources and disagree, and then they are written to different places:
+        # the database and the enrichment report show `year`, while the file
+        # gets `TDRC` from `date or year` and ends up with the other one. The
+        # user reads 1973 in Cadenza and 1972 in every player.
+        #
+        # The year vote wins, because it is the value the interface shows and
+        # the one whose trust map was tuned for this. A date that disagrees
+        # with it is dropped rather than silently rewritten, so nothing claims
+        # a precision it did not vote for.
+        year = result.metadata.year
+        date = result.metadata.date
+        if year and date:
+            date_year = str(date)[:4]
+            if date_year.isdigit() and int(date_year) != int(year):
+                log.debug("dropping date %r: it disagrees with the voted year %s",
+                          date, year)
+                result.metadata.date = None
+                result.conflicts.setdefault("date", []).append(
+                    f"dropped {date!r}: disagrees with year={year}")
+
         # Lyrics come from a dedicated provider and skip the vote entirely.
         for c in candidates:
             if c.source == "lrclib":

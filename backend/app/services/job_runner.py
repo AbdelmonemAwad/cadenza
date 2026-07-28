@@ -171,6 +171,17 @@ class JobRunner:
                 job.result = result
                 job.message = message
                 job.finished_at = datetime.now(UTC).replace(tzinfo=None)
+                # These two columns existed, were returned by the API, and were
+                # rendered in the job result panel -- and nothing ever wrote
+                # them, so every job that had ever run reported 0 succeeded and
+                # 0 failed however much it had done. Each handler already
+                # counts its own outcome under its own name; this reads
+                # whichever it used.
+                succeeded, failed_count = _outcome(result)
+                if succeeded is not None:
+                    job.succeeded = succeeded
+                if failed_count is not None:
+                    job.failed = failed_count
             s.add(AuditLog(action=f"job.{kind}", job_id=job_id,
                            level="error" if state == JobState.FAILED else "info",
                            detail={"state": state.value, "result_keys": list(result)}))
@@ -241,6 +252,31 @@ async def reconcile_orphaned_jobs() -> int:
     if orphans:
         log.info("closed %d job(s) left behind by a previous run", len(orphans))
     return len(orphans)
+
+
+# Each handler counts its outcome under the name that reads best in its own
+# result -- a scan reports `added`, a conversion `converted`, an organize run
+# `moved`. Rather than make every handler also fill in two generic columns and
+# risk them drifting apart, the generic pair is derived from whichever key the
+# handler used.
+_SUCCEEDED_KEYS = ("succeeded", "converted", "moved", "applied", "computed",
+                   "restored", "purged", "enriched", "updated", "added")
+_FAILED_KEYS = ("failed", "errors", "quarantine_failed")
+
+
+def _outcome(result: dict) -> tuple[int | None, int | None]:
+    def first_int(keys: tuple[str, ...]) -> int | None:
+        for key in keys:
+            value = result.get(key)
+            if isinstance(value, bool):
+                continue
+            if isinstance(value, int):
+                return value
+            if isinstance(value, list):
+                return len(value)
+        return None
+
+    return first_int(_SUCCEEDED_KEYS), first_int(_FAILED_KEYS)
 
 
 def _trim(d: dict, limit: int = 4000) -> dict:
@@ -535,13 +571,37 @@ async def handle_organize(job_id: int, params: dict, dry_run: bool,
 
         organizer = Organizer(s)
         plans = organizer.plan(tracks, params.get("template"))
-        await runner.progress(job_id, 0, len(plans), "planning")
+
+        movable = [p for p in plans if p.changed]
+        await runner.progress(job_id, 0, len(movable), "planning")
+
+        # The only progress call used to be that one, before apply() looped
+        # over every plan without a callback -- so the Jobs page showed 0/N for
+        # the whole run and kept showing it afterwards. On a library where the
+        # run takes a quarter of an hour that is indistinguishable from a job
+        # that has hung.
+        async def on_progress(done: int, total: int, current: str) -> None:
+            await runner.progress(job_id, done, total, current)
+
         out = await organizer.apply(plans, dry_run=dry_run, job_id=job_id,
-                                    tracks_by_id={t.id: t for t in tracks})
+                                    tracks_by_id={t.id: t for t in tracks},
+                                    progress=on_progress,
+                                    should_stop=lambda: runner.is_cancelled(job_id))
+
+    # Both the moves and the ones that could not be planned. `if p.changed`
+    # filtered out exactly the rows the `reason` field exists for: a plan
+    # carrying a reason is always built with changed=False, so every template
+    # error and every "no free target name" was dropped from the result the
+    # user reads, and the run looked like it had simply skipped them.
     out["preview"] = [
         {"track_id": p.track_id, "from": p.src, "to": p.dst, "reason": p.reason}
-        for p in plans if p.changed
+        for p in movable
     ][:300]
+    out["not_planned"] = [
+        {"track_id": p.track_id, "path": p.src, "reason": p.reason}
+        for p in plans if not p.changed and p.reason
+    ][:300]
+    out["unchanged"] = sum(1 for p in plans if not p.changed and not p.reason)
     return out
 
 

@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.core import artwork as artwork_mod
+from app.core.quality import score_for_track
 from app.core.tags import TagSet, read_tags, write_tags
 from app.db.models import AuditLog, Track
 from app.providers.aggregator import MergedResult, MetadataAggregator
@@ -140,7 +141,17 @@ class EnrichmentService:
             if lrc and self.s.write_lrc_file:
                 path.with_suffix(".lrc").write_text(lrc, encoding="utf-8")
 
-            self._sync_track_row(track, proposed, art_bytes, merged)
+            # What was actually written, not what was downloaded. Artwork is
+            # fetched whenever a provider has one, but only stored if
+            # embed_artwork or write_cover_file is on -- and the row used to be
+            # marked has_artwork on the fetch, so with both settings off every
+            # enriched track claimed a cover it did not have. The dashboard's
+            # "missing artwork" figure then dropped to zero while nothing had
+            # changed on disk.
+            art_stored = art_bytes if (
+                art_bytes and (self.s.embed_artwork or self.s.write_cover_file)
+            ) else None
+            self._sync_track_row(track, proposed, art_stored, merged)
             self.session.add(AuditLog(
                 action="enrich", level="info", track_id=track.id, job_id=job_id,
                 src_path=track.path, reversible=False,
@@ -179,3 +190,10 @@ class EnrichmentService:
         elif merged.metadata.lyrics:
             track.has_lyrics = True
         track.tag_completeness = tags.completeness()
+        # quality_score is 0.55*format + 0.15*rate + 0.10*depth + 0.20*tag
+        # completeness, so changing the tags changes it. Updating one and not
+        # the other left the dashboard's quality figure and every
+        # quality-sorted view reflecting the tags as they were before
+        # enrichment ran -- for ever, because nothing else recomputes it until
+        # a full rescan.
+        track.quality_score = score_for_track(track)
