@@ -57,7 +57,22 @@ class DiscogsProvider(BaseProvider):
             md = self._from_release(row, detail, title)
             # Discogs ranks by its own relevance; translate rank into confidence.
             md.confidence = round(max(0.35, 0.82 - idx * 0.12), 4)
-            if md.title and title:
+
+            # The penalty used to compare the searched title against md.title --
+            # which falls back to the searched title when no tracklist entry
+            # matched. So it compared the input with itself, scored 1.0, and
+            # could never reject anything. A release that lists its tracks and
+            # does not contain ours got exactly the same confidence as one that
+            # does.
+            #
+            # `title_matched` is False only when the release published a
+            # tracklist and nothing in it resembled the track we asked about.
+            # That is real evidence of the wrong release, so it is treated as
+            # such rather than ignored.
+            matched = md.extra.pop("title_matched", None) if md.extra else None
+            if matched is False:
+                md.confidence = round(md.confidence * 0.4, 4)
+            elif matched is True and md.title and title:
                 from app.core.dedup import normalize_text
                 similarity = fuzz.token_sort_ratio(
                     normalize_text(title), normalize_text(md.title)) / 100
@@ -125,5 +140,8 @@ class DiscogsProvider(BaseProvider):
             compilation=any("compilation" in desc.lower()
                             for desc in (formats[0].get("descriptions") or [])),
             extra={"country": d.get("country"),
-                   "labels": [lbl.get("name") for lbl in (d.get("labels") or [])]},
+                   "labels": [lbl.get("name") for lbl in (d.get("labels") or [])],
+                   # None when the release published no tracklist to judge by;
+                   # False when it did and our track was not in it.
+                   "title_matched": bool(track_title) if tracklist else None},
         )

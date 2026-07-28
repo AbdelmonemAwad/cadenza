@@ -4,6 +4,26 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.10.1] - 2026-07-28
+
+### Fixed
+
+- **Discogs can reject a release again.** The relevance penalty compared the
+  searched title against `md.title` — which falls back to the searched title
+  when no tracklist entry matched. It compared the input with itself, scored
+  1.0, and could never reject anything, so a release that published its
+  tracklist and did not contain your track scored exactly as well as one that
+  did. A release whose tracklist demonstrably lacks the track is now penalised
+  as the evidence it is.
+- **A failed request no longer replaces the dashboard permanently.** One
+  dropped poll — a restart, a lost packet — turned the page into a red banner
+  until the browser was reloaded, even though the next poll twenty seconds
+  later succeeded. The error is a banner above the page now, the page keeps
+  rendering what it last had, and a successful poll clears it.
+- **The Activity log says when it could not load.** `.catch(() => {})` left an
+  empty table that was indistinguishable from a library with no activity in it,
+  so a failing request looked like a working page with nothing to show.
+
 ## [2.10.0] - 2026-07-28
 
 ### Added

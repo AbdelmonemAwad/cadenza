@@ -30,14 +30,18 @@ export default function Logs() {
   const [action, setAction] = useState('')
   const [level, setLevel] = useState('')
   const [expanded, setExpanded] = useState<number | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     const params = new URLSearchParams({ limit: String(PAGE), offset: String(offset) })
     if (action) params.set('action', action)
     if (level) params.set('level', level)
     api.get<{ total: number; items: Row[] }>(`/dashboard/audit?${params}`)
-      .then((r) => { setRows(r.items); setTotal(r.total) })
-      .catch(() => {})
+      .then((r) => { setRows(r.items); setTotal(r.total); setError(null) })
+      // Surfaced, not swallowed. `.catch(() => {})` left an empty table that
+      // was indistinguishable from a library with no activity in it -- so a
+      // failing request looked like a working page with nothing to show.
+      .catch((e) => setError((e as Error).message))
   }, [offset, action, level])
 
   return (
@@ -46,6 +50,8 @@ export default function Logs() {
         <h1>{t('logs.title')}</h1>
         <p>{t('logs.subtitle')}</p>
       </div>
+
+      {error && <div className="banner danger">{error}</div>}
 
       <div className="toolbar">
         <select value={action} onChange={(e) => { setOffset(0); setAction(e.target.value) }}

@@ -25,7 +25,10 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const load = () => api.get<Stats>('/dashboard/stats').then(setStats)
+  // Cleared on success, or a single failed poll leaves the banner up for ever
+  // while the page behind it is perfectly current.
+  const load = () => api.get<Stats>('/dashboard/stats')
+    .then((r) => { setStats(r); setError(null) })
     .catch((e) => setError(e.message))
 
   useEffect(() => {
@@ -46,8 +49,16 @@ export default function Dashboard() {
     finally { setBusy(false) }
   }
 
-  if (error) return <div className="banner danger">{t('dashboard.statsError', { error })}</div>
-  if (!stats) return <div className="empty">{t('app.loading')}</div>
+  // The error used to replace the entire page, permanently: one failed poll --
+  // a restart, a dropped Wi-Fi packet -- and the dashboard was a red banner
+  // until the browser was reloaded, even though the next poll twenty seconds
+  // later succeeded. It is a banner ABOVE the page now, and the page keeps
+  // rendering whatever it last had.
+  if (!stats) {
+    return error
+      ? <div className="banner danger">{t('dashboard.statsError', { error })}</div>
+      : <div className="empty">{t('app.loading')}</div>
+  }
 
   const losslessPercent = stats.library.tracks
     ? Math.round((stats.library.lossless / stats.library.tracks) * 100)
@@ -55,6 +66,9 @@ export default function Dashboard() {
 
   return (
     <>
+      {error && (
+        <div className="banner danger">{t('dashboard.statsError', { error })}</div>
+      )}
       <div className="page-head">
         <h1>{t('dashboard.title')}</h1>
         <p>{t('dashboard.subtitle')}</p>
