@@ -16,9 +16,10 @@ _PASSWORD = "counts-test-password"
 @pytest.fixture
 async def populated_library(app_client):
     """A signed-in client over a library holding every track status."""
+    from sqlalchemy import select
+
     from app.core.auth import Credentials, hash_password, save_credentials
     from app.db.base import SessionFactory, init_db
-    from sqlalchemy import select
 
     await init_db()
     save_credentials(Credentials(username="counts",
