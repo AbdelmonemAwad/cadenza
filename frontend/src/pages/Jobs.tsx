@@ -156,10 +156,14 @@ export default function Jobs() {
                     onClick={() => api.get(`/jobs/${job.id}`).then(setDetail)}>
                     {t('jobs.viewResult')}
                   </button>
-                  {job.state === 'running' && (
+                  {/* Queued jobs are cancellable too -- the runner has always
+                      accepted it -- but the button only appeared once a job was
+                      running, so anything waiting behind a long scan could not
+                      be dropped from here. */}
+                  {(job.state === 'running' || job.state === 'pending') && (
                     <button className="btn sm danger" style={{ marginInlineStart: 4 }}
                       onClick={() => api.post(`/jobs/${job.id}/cancel`).then(load)}>
-                      {t('jobs.cancelJob')}
+                      {job.state === 'running' ? t('jobs.stopJob') : t('jobs.cancelJob')}
                     </button>
                   )}
                 </td>

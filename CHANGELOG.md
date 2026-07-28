@@ -4,6 +4,51 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.3.0] - 2026-07-28
+
+### Changed
+
+- **A library is browsable in about two minutes instead of forty.** Measured on
+  a DS1821+ over 3801 real files, a scan spent its time like this:
+
+  | stage | per file | share |
+  |---|---|---|
+  | ffprobe | 64 ms | 2.5% |
+  | read tags | 19 ms | 0.7% |
+  | sha256 | 79 ms | 3.1% |
+  | **audio_md5** | **1705 ms** | **67.0%** |
+  | **fingerprint** | 678 ms | 26.6% |
+
+  94% went on two figures that nothing needs in order to browse, search, sort by
+  quality or organise: `audio_md5` decodes the whole file to PCM and the
+  fingerprint decodes two minutes of it again, and both exist only so duplicate
+  detection can group by them. They now run as their own job afterwards — one
+  you can watch, stop, and start again to continue, because it selects the
+  tracks still missing a value.
+
+### Fixed
+
+- **Stopping a scan now stops it.** The button, the endpoint and the cancel flag
+  all existed, but `handle_scan` never looked at the flag — so the longest job
+  in the application, and the one most worth stopping, ignored the request
+  entirely. The scan checks between batches, which keeps everything already
+  indexed and stops within seconds.
+- **A stopped job is recorded as stopped**, not as `done`. It returned normally
+  with partial numbers and was written down as a success, so a scan halted at
+  200 of 3801 files reported those 200 as the whole library.
+- **Stopping a scan does not empty your library.** A halted scan has
+  legitimately not visited most of the files, and the sweep that marks unseen
+  tracks `MISSING` would have marked nearly all of them — the user asks a long
+  job to stop and watches the library appear to delete itself. The sweep now
+  runs only after a pass that finished.
+- **Queued jobs can be stopped from the interface.** The runner has always
+  accepted cancelling a pending job; the button only appeared once one was
+  running, so anything waiting behind a long scan could not be dropped.
+- **`/volume1/music` no longer matches `/volume1/musicbox`.** Existing rows were
+  selected with a bare prefix match, so scanning one folder loaded a
+  similarly-named sibling's tracks and then marked every one of them `MISSING`,
+  because that pass never visits them.
+
 ## [2.2.0] - 2026-07-28
 
 ### Fixed
