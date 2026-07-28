@@ -80,15 +80,34 @@ def normalize_text(s: str | None) -> str:
     return _SPACES.sub(" ", s).strip()
 
 
-def metadata_key(t: Track) -> str | None:
-    """Blocking key: leading title words + artist prefix + coarse duration."""
+MAX_BLOCK = 60
+
+
+def metadata_keys(t: Track, tolerance: float) -> list[str]:
+    """Blocking keys: leading title words + artist prefix + coarse duration.
+
+    Two keys, not one, and the bucket is the comparison tolerance rather than a
+    fixed five seconds. Only tracks sharing a key are ever paired, so a
+    blocking window narrower than the tolerance throws away exactly the pairs
+    the tolerance was meant to admit: at five seconds, 182.4s bucketed to 36
+    and 182.6s to 37, and the two were never compared even though the engine
+    would have accepted a seven-second difference. Most real duplicates differ
+    by a second or two of encoder padding, so they landed either side of a
+    boundary about as often as not.
+
+    Indexing in the adjacent slot as well is what makes a boundary harmless,
+    and it is what `find_acoustic` already does a few lines below -- this layer
+    simply never got it.
+    """
     title = normalize_text(t.title)
     artist = normalize_text(t.artist or t.albumartist)
     if not title or not t.duration:
-        return None
+        return []
     head = " ".join(title.split()[:3])
-    bucket = int(round(t.duration / 5.0))     # 5-second window
-    return f"{head}|{artist[:24]}|{bucket}"
+    width = max(1.0, tolerance)
+    bucket = int(t.duration // width)
+    return [f"{head}|{artist[:24]}|{bucket}",
+            f"{head}|{artist[:24]}|{bucket + 1}"]
 
 
 # ----------------------------- Engine results -----------------------------
@@ -259,14 +278,21 @@ class DeduplicationEngine:
         pool = [t for t in tracks if t.id not in taken]
         blocks: dict[str, list[Track]] = defaultdict(list)
         for t in pool:
-            key = metadata_key(t)
-            if key:
+            for key in metadata_keys(t, self.s.duration_tolerance_s):
                 blocks[key].append(t)
 
         clusters: list[Cluster] = []
         threshold = self.s.title_fuzzy_threshold
+        oversized = 0
         for key, members in blocks.items():
-            if len(members) < 2 or len(members) > 60:
+            # The cap bounds the O(n^2) pair loop inside a block. A block that
+            # large is a compilation title like "Intro" shared by hundreds of
+            # tracks, not a duplicate cluster -- but it is skipped, so say how
+            # often rather than letting the count quietly go missing.
+            if len(members) > MAX_BLOCK:
+                oversized += 1
+                continue
+            if len(members) < 2:
                 continue
             uf = _UnionFind()
             for i in range(len(members)):
@@ -286,7 +312,23 @@ class DeduplicationEngine:
                     uf.union(a.id, b.id)
             for root, ids in uf.groups().items():
                 clusters.append(Cluster(DupKind.METADATA, f"meta:{key}:{root}", 0.80, sorted(ids)))
-        return clusters
+
+        if oversized:
+            log.info("metadata layer skipped %d block(s) larger than %d tracks",
+                     oversized, MAX_BLOCK)
+
+        # A track is indexed under two keys, so a pair straddling a boundary is
+        # found twice. The signature differs between the two, so dedupe on the
+        # membership itself.
+        seen: set[tuple[int, ...]] = set()
+        unique: list[Cluster] = []
+        for cluster in clusters:
+            members = tuple(cluster.track_ids)
+            if members in seen:
+                continue
+            seen.add(members)
+            unique.append(cluster)
+        return unique
 
     # ---------------- Orchestration ----------------
 
@@ -332,9 +374,29 @@ class DeduplicationEngine:
             await self.session.delete(g)
         await self.session.flush()
 
+        # What the user has already told us to leave alone.
+        #
+        # Ignoring a group only set `resolved = True` on it, and re-analysis
+        # deletes the unresolved ones and rebuilds every cluster from every
+        # active track -- so the group the user dismissed came straight back,
+        # every time, with no way to make it stop. The signature is no use for
+        # recognising it: a metadata cluster's signature embeds the blocking
+        # key and a union-find root, both of which change between runs. The
+        # membership does not.
+        resolved = await self.session.execute(
+            select(DuplicateGroup).where(DuplicateGroup.resolved == True))  # noqa: E712
+        ignored: set[tuple[int, ...]] = {
+            tuple(sorted(m.track_id for m in g.members))
+            for g in resolved.scalars().all()
+        }
+
+        skipped_ignored = 0
         for cluster in report.clusters:
             members = [by_id[i] for i in cluster.track_ids if i in by_id]
             if len(members) < 2:
+                continue
+            if tuple(sorted(t.id for t in members)) in ignored:
+                skipped_ignored += 1
                 continue
             candidates = [Candidate.from_track(t) for t in members]
             verdict: Verdict | None = self.decider.decide(candidates)
@@ -367,6 +429,10 @@ class DeduplicationEngine:
                     proposed_action=action,
                     reason=verdict.reasons.get(cand.track_id),
                 ))
+
+        if skipped_ignored:
+            log.info("left %d group(s) alone because you ignored them",
+                     skipped_ignored)
         await self.session.commit()
 
 

@@ -4,6 +4,61 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.7.0] - 2026-07-28
+
+Numbers the application showed that were not true. None of these failed —
+they reported a figure, and the figure was wrong, which is worse because there
+is nothing to notice.
+
+### Fixed
+
+- **Duplicate detection was throwing away most of the matches it looked for.**
+  The metadata layer blocked on a fixed five-second bucket and then compared
+  with a seven-second tolerance, so a pair that fell either side of a boundary
+  was never looked at. Measured over 10,000 random track lengths:
+
+  | difference between two copies | found before | found now |
+  |---|---|---|
+  | 0.5 s | 90.5% | 100% |
+  | 1 s | 79.6% | 100% |
+  | 2 s | 58.7% | 100% |
+  | 3 s | 40.4% | 100% |
+  | 5 s | 0% | 100% |
+
+  Every one of those is inside the tolerance the engine then applies. Most real
+  duplicates differ by a second or two of encoder padding. The bucket is now
+  the tolerance itself and each track is indexed in the adjacent slot too —
+  which is what the acoustic layer already did.
+- **An ignored duplicate group stays ignored.** Ignoring one only set
+  `resolved` on the group, and re-analysis deletes the unresolved groups and
+  rebuilds every cluster from every active track — so the group came straight
+  back, every time, with no way to make it stop. Ignored groups are now
+  recognised by their membership, because a metadata cluster's signature embeds
+  a blocking key and a union-find root and changes between runs.
+- **The library list shows your library.** It included quarantined, missing and
+  corrupt rows in both the list and the count, so the dashboard and the library
+  page disagreed and a file you had already quarantined kept appearing among
+  your music. Asking for a status explicitly still returns it.
+- **Search no longer stops at 5000.** It fetched up to 5000 matching row ids
+  and passed them to `IN (...)`, so a search matching more than that silently
+  lost the rest — and reported the capped number as the total, with no
+  indication anything had been dropped.
+- **"Incomplete albums" counts the tracks you have.** The same condition that
+  supplied the expected total also restricted what was counted as present, so
+  an album where eight of twelve files carried a track-total tag was reported
+  as missing four tracks when all twelve were there. Ripping software routinely
+  tags only some tracks, so this misreported complete albums across a large
+  part of a typical library.
+- **"(manually overridden)" is added when you actually override something.**
+  The page sends the whole group on every edit, and the note was appended
+  unconditionally — so one dropdown change stamped every member, and each
+  further edit stamped them again, burying the engine's own explanation of why
+  it chose that copy under repetitions of a note that was not true of most of
+  them.
+- **Skipped duplicate blocks are reported.** A block too large to compare
+  pairwise is still skipped, but it now says so in the log instead of the count
+  quietly going missing.
+
 ## [2.6.0] - 2026-07-28
 
 The next batch from the feature audit — the ones where the interface and the

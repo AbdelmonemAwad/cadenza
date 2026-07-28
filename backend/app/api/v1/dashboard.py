@@ -60,11 +60,24 @@ async def stats(s: AsyncSession = Depends(get_session)) -> dict:
     ]
 
     # An album is incomplete when we hold fewer tracks than its declared total.
+    #
+    # `have` must count every track of the album; only `expected` needs a
+    # total_tracks tag. The same WHERE used to restrict both, so an album where
+    # eight of twelve files carried the tag was counted as having eight of
+    # twelve and reported as missing four -- when in fact all twelve were
+    # there. Ripping software routinely writes the total on some tracks and not
+    # others, so this misreported complete albums as incomplete for a large
+    # part of a typical library.
+    #
+    # COUNT over a CASE rather than a second query: the totals have to come
+    # from the same grouping to line up.
     incomplete_albums = (await s.execute(
-        select(Track.albumartist, Track.album, func.count(Track.id).label("have"),
+        select(Track.albumartist, Track.album,
+               func.count(Track.id).label("have"),
                func.max(Track.total_tracks).label("expected"))
-        .where(active, Track.album.isnot(None), Track.total_tracks.isnot(None))
+        .where(active, Track.album.isnot(None))
         .group_by(Track.albumartist, Track.album)
+        .having(func.max(Track.total_tracks).isnot(None))
         .having(func.count(Track.id) < func.max(Track.total_tracks))
         .order_by((func.max(Track.total_tracks) - func.count(Track.id)).desc())
         .limit(50)
