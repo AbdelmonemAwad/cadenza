@@ -35,7 +35,13 @@ def write_private(path: Path, data: bytes) -> None:
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f".{path.name}.{os.getpid()}.{secrets.token_hex(4)}.tmp")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, SECRET_MODE)
+    # O_BINARY, or Windows opens this in text mode and os.write turns every
+    # \n into \r\n. This function takes bytes and must write them unchanged:
+    # an uploaded Apple signing key came back off disk two bytes longer per
+    # line, which is a corrupt PEM. The constant does not exist on POSIX, where
+    # there is no translation to disable, hence the getattr.
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
+    fd = os.open(tmp, flags, SECRET_MODE)
     try:
         try:
             # Belt and braces against a permissive umask. POSIX-only, and

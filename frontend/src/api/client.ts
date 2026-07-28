@@ -5,10 +5,19 @@ const BASE = '/api/v1'
 export const UNAUTHORIZED_EVENT = 'cadenza:unauthorized'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  // A FormData body must carry no Content-Type from here: the browser sets it
+  // itself so that it can append the multipart boundary, and a hand-written
+  // header produces a body the server cannot parse. Merging an empty object
+  // over the default does not remove it, so the default is skipped outright.
+  const isForm = init?.body instanceof FormData
+  const headers: HeadersInit = isForm
+    ? { ...(init?.headers || {}) }
+    : { 'Content-Type': 'application/json', ...(init?.headers || {}) }
+
   const res = await fetch(`${BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
     credentials: 'same-origin',   // carry the session cookie
     ...init,
+    headers,
   })
   if (!res.ok) {
     // Do not fire on the auth endpoints themselves: a failed sign-in is a
@@ -35,6 +44,14 @@ export const api = {
   put: <T>(p: string, body: unknown) =>
     request<T>(p, { method: 'PUT', body: JSON.stringify(body) }),
   del: <T>(p: string) => request<T>(p, { method: 'DELETE' }),
+
+  /** Upload a file as multipart/form-data. `request` recognises the FormData
+   *  body and leaves the Content-Type to the browser. */
+  upload: <T>(p: string, file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return request<T>(p, { method: 'POST', body: form })
+  },
 }
 
 export type JobEvent = {
