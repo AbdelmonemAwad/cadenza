@@ -419,18 +419,20 @@ const en = {
     signOut: 'Sign out',
     signingIn: 'Signing in…',
     invalid: 'Incorrect password.',
-    firstRun:
-      'A password was generated when Cadenza first started. Find it in '
-      + 'initial-password.txt inside the config folder, or in the container log.',
+    // Cadenza has not generated a password since 2.1.0 and never writes
+    // initial-password.txt; this told every user to go and look for a file
+    // that is not there.
+    firstRun: 'Sign in with the username and password you chose when you first '
+      + 'opened Cadenza.',
     notInitialised:
-      'Authentication is not ready yet. Wait for the container to finish starting, '
-      + 'then reload.',
+      'Cadenza is still starting. Wait a moment, then reload.',
     changeTitle: 'Change your password',
     changeRequired:
       'You are signed in with the generated password. Choose your own before continuing.',
     currentPassword: 'Current password',
     newPassword: 'New password',
     confirmPassword: 'Confirm new password',
+    changeDone: 'Password updated. Other devices stay signed in until you sign out everywhere.',
     changeSubmit: 'Update password',
     changed: 'Password updated.',
     mismatch: 'The two passwords do not match.',

@@ -44,7 +44,22 @@ export default function Library() {
       .catch((e) => setMessage(e.message))
   }
 
-  useEffect(() => { load() }, [offset, filter])
+  // Reload when a job finishes, not only when the filter changes. This page
+  // owns the Scan button, and without the listener the sequence was: click
+  // Scan, watch the job strip run to completion, watch it disappear — and the
+  // table is still empty and the header still says "0 tracks". Nothing
+  // reloaded until the user pressed Search or navigated away and back, so on a
+  // fresh install the scan looked like it had done nothing at all.
+  //
+  // App.tsx dispatches cadenza:job-finished for exactly this, and Dashboard,
+  // Duplicates and Convert all listen. The page with the button did not.
+  useEffect(() => {
+    load()
+    const onJobFinished = () => load()
+    window.addEventListener('cadenza:job-finished', onJobFinished)
+    return () => window.removeEventListener('cadenza:job-finished', onJobFinished)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offset, filter])
 
   const inspect = async (track: Track) => {
     setSelected(track); setLookup(null); setBusy(true); setMessage(null)

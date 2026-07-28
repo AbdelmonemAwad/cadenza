@@ -11,7 +11,7 @@ Convert formats. Never lose a file.
 [![DSM](https://img.shields.io/badge/DSM-7.x-0f7bd8.svg)](https://www.synology.com/dsm)
 [![arch](https://img.shields.io/badge/arch-x86__64-lightgrey.svg)](#requirements)
 
-[العربية](README.ar.md) · [Install](docs/INSTALL.md) · [Operations](docs/OPERATIONS.md) · [Architecture](docs/ARCHITECTURE.md) · [Third-party licences](docs/THIRD-PARTY.md) · [Contributing](CONTRIBUTING.md)
+[العربية](README.ar.md) · [Roadmap](docs/ROADMAP.md) · [Install](docs/INSTALL.md) · [Operations](docs/OPERATIONS.md) · [Architecture](docs/ARCHITECTURE.md) · [Third-party licences](docs/THIRD-PARTY.md) · [Contributing](CONTRIBUTING.md)
 
 </div>
 
@@ -54,11 +54,11 @@ keep and why, and moves the rest somewhere you can get them back from.
 |---|---|
 | **Hardware** | Synology NAS, `x86_64` — DS1821+, DVA3221, DS920+, DS1621+, and similar |
 | **DSM** | 7.0 or newer |
-| **Prerequisite** | Container Manager (or the older Docker package) installed and running |
-| **Free space** | ~2 GB for the container image and the library index |
+| **Prerequisite** | None for the DSM package. Container Manager only if you choose to run the container instead |
+| **Free space** | ~1 GB for the package, plus the library index |
 
-ARM-based models (DS220j, DS223, …) are not supported: the image is built for
-`linux/amd64`.
+ARM-based models (DS220j, DS223, …) are not supported: the bundled interpreter
+and FFmpeg are built for `x86_64`.
 
 ## Install
 
@@ -83,10 +83,15 @@ The package runs Cadenza itself. It bundles its own Python interpreter, its
 dependencies and static `ffmpeg`/`ffprobe`/`fpcalc`, so it needs neither Docker
 nor anything else installed on the NAS.
 
-**Before you install**, create the folder for Cadenza's database and settings
-in File Station — for example `/volume1/docker/cadenza` — signed in as the
-account you want Cadenza to run as. If it does not exist, or that account
-cannot write to it, Cadenza refuses to start and says so in its log.
+**Nothing to prepare.** Leave the wizard's data folder empty and Cadenza keeps
+its database, settings and API keys inside its own package folder — always
+writable by its service account, and preserved when you update. Name a folder
+only if you want the data somewhere specific, and then grant the `cadenza`
+account access to it the same way as the music folder.
+
+Wherever the data ends up, Cadenza records it and keeps using it. An update
+never starts you from scratch, and if that folder ever becomes unreachable
+Cadenza refuses to start and says so rather than opening an empty library.
 
 **1.** Download the `.spk` from [Releases](https://github.com/AbdelmonemAwad/cadenza/releases).
 
@@ -150,13 +155,17 @@ Read this before exposing Cadenza beyond your own LAN.
 
 ### Signing in
 
-A random administrator password is generated the first time Cadenza starts.
-Read it from `initial-password.txt` in the config volume — it is written
-`0600` and deleted automatically once you set your own. There is no default
-password: a shared one would look like protection while giving none.
+**You choose the username and the password**, the first time you open Cadenza.
+Nothing is generated, nothing is written to a file for you to go and find, and
+there is no default credential — a shared one would look like protection while
+giving none.
 
-You are required to change it before anything else works. That is enforced by
-the server, not by the sign-in screen, so refreshing the page does not skip it.
+The setup endpoint works exactly once and answers `409` afterwards, so nobody
+can claim an install you have already set up, and it is rate limited like
+sign-in because it is reachable without a session until it is used.
+
+Earlier versions did generate a password and write it to `initial-password.txt`.
+They no longer do, and that file is removed on upgrade.
 
 Sessions last 14 days. Changing your password ends every other session, and
 **Sign out everywhere** does the same on demand if you think a session leaked.

@@ -45,6 +45,28 @@ npm install
 npm run dev          # http://localhost:5173, proxies /api to port 8000
 ```
 
+## Branches and versions
+
+**One working branch, `dev`. Everything reaches `main` through a pull
+request.** A ruleset on `main` enforces it — a direct push is refused with
+`GH013: Changes must be made through a pull request` — and after each merge
+`dev` is fast-forwarded to `main` so the two never drift.
+
+`dev` exists only because a pull request needs a source branch; there is no
+second line of development, and nothing should ever sit on `dev` that is not
+on its way to `main` this week.
+
+**Every change that ships bumps `VERSION`.** DSM compares the build number
+after the dash and silently declines a package that is not newer than the one
+installed, so a forgotten bump does not fail — it looks like "the install did
+nothing", which is a much worse way to find out. `scripts/check-version.sh`
+checks the shape, that `backend/app/config.py` agrees, that the generated
+`INFO` agrees, and that the number actually increased against the base branch.
+Documentation-only changes are exempt because they ship nothing.
+
+Add a `CHANGELOG.md` entry in the same commit. Say what the user sees, not
+what the diff does.
+
 ## Before opening a pull request
 
 ```bash
@@ -52,7 +74,20 @@ cd backend  && ruff check app tests && pytest
 cd frontend && npx tsc --noEmit && npm run build
 ```
 
-CI runs exactly these, plus a Docker build.
+CI runs exactly these, plus a Docker build, the `.spk` build, a secret scan
+over both the working tree and the history, a dependency-licence check, and
+guards for control characters, CRLF and version consistency. **A red build is
+never merged.**
+
+### If you change a database model
+
+Add a migration to `backend/app/db/migrations.py` in the same change.
+`create_all` will not add a column to a table that already exists, so without
+one your change reaches every fresh install and no database that already holds
+a library — and CI would not notice, because CI always starts empty. The guard
+in `tests/test_migrations.py` fails by name if you forget. Do not "fix" it by
+editing `tests/baseline.sql`; that makes the test pass and leaves every
+existing user with a database the code no longer matches.
 
 ## Conventions
 

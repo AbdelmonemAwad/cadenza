@@ -75,6 +75,7 @@ class JobRunner:
         # A fresh queue per start, bound to the loop that is actually running.
         self._queue = asyncio.Queue()
         self._subscribers.clear()
+        await reconcile_orphaned_jobs()
         if self._task is None or self._task.done():
             self._task = asyncio.create_task(self._loop(), name="cadenza-job-runner")
 
@@ -90,7 +91,17 @@ class JobRunner:
                      dry_run: bool | None = None) -> int:
         if kind not in self.handlers:
             raise ValueError(f"unknown job kind: {kind}")
-        dry = self.settings.dry_run_default if dry_run is None else dry_run
+        # get_settings(), not self.settings. `self.settings` was captured once
+        # in __init__, which runs at module import, and save_settings rebuilds
+        # the cache as a brand-new object -- so the runner kept the values the
+        # process booted with, for ever.
+        #
+        # The visible half was a scheduled purge staying in preview mode after
+        # the user turned preview off. The dangerous half is the other
+        # direction: turning preview back ON left every scheduled enrich,
+        # organize and convert executing for real until the package was
+        # restarted, with the interface showing the setting as saved.
+        dry = get_settings().dry_run_default if dry_run is None else dry_run
         async with session_scope() as s:
             job = Job(kind=kind, params=params or {}, dry_run=dry, state=JobState.PENDING)
             s.add(job)
@@ -196,6 +207,40 @@ class JobRunner:
             except asyncio.QueueFull:
                 # Drop a stalled subscriber rather than block the running job.
                 self._subscribers.discard(q)
+
+
+async def reconcile_orphaned_jobs() -> int:
+    """Close out jobs a previous process left behind. Returns how many.
+
+    The queue is rebuilt empty on every start and nothing used to look at what
+    was already in the database, so a job that was pending or running when the
+    package stopped -- an update, a reboot, a crash mid-scan -- stayed in that
+    state for ever. The Jobs page showed a permanent "running" row, the
+    dashboard counted it as active work, and the Stop button could not help
+    either: `cancel` only rewrites a PENDING row and otherwise reports whether
+    the job is the one currently in flight. An orphan is neither.
+
+    Marked cancelled rather than failed: nothing went wrong with the job, it
+    simply did not survive a restart, and `failed` is a signal the user should
+    be able to trust.
+
+    Module level, not a method: it touches no instance state, and the runner is
+    a singleton whose task binds to whichever loop first started it -- so a
+    test that drove start()/stop() to reach this would fight the event loop
+    rather than exercise the behaviour.
+    """
+    async with session_scope() as s:
+        orphans = list((await s.execute(
+            select(Job).where(Job.state.in_((JobState.RUNNING, JobState.PENDING)))
+        )).scalars().all())
+        for job in orphans:
+            job.state = JobState.CANCELLED
+            job.message = "stopped when Cadenza restarted"
+            job.finished_at = datetime.now(UTC).replace(tzinfo=None)
+
+    if orphans:
+        log.info("closed %d job(s) left behind by a previous run", len(orphans))
+    return len(orphans)
 
 
 def _trim(d: dict, limit: int = 4000) -> dict:

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
 import FolderPicker from '../components/FolderPicker'
+import { ChangePassword } from './Login'
 import { useI18n } from '../i18n'
 
 type Health = {
@@ -110,6 +111,7 @@ export default function Settings() {
   const [health, setHealth] = useState<Health | null>(null)
   const [patch, setPatch] = useState<Record<string, any>>({})
   const [message, setMessage] = useState<string | null>(null)
+  const [passwordChanged, setPasswordChanged] = useState(false)
 
   const load = () => {
     api.get<Record<string, any>>('/settings').then(setConfig)
@@ -192,7 +194,8 @@ export default function Settings() {
           </label>
           <label className="field">
             <span>{t('settings.retentionDays')}</span>
-            <input type="number" value={value('quarantine_retention_days') ?? 30}
+            <input type="number" min="1" max="3650"
+              value={value('quarantine_retention_days') ?? 30}
               onChange={(e) => set('quarantine_retention_days', Number(e.target.value))} />
           </label>
         </div>
@@ -206,7 +209,7 @@ export default function Settings() {
           </label>
           <label className="field">
             <span>{t('settings.acousticThreshold')}</span>
-            <input type="number" step="0.01" min="0.5" max="0.999"
+            <input type="number" step="0.01" min="0.85" max="0.999"
               value={value('acoustic_match_threshold') ?? 0.9}
               onChange={(e) => set('acoustic_match_threshold', Number(e.target.value))} />
           </label>
@@ -215,12 +218,14 @@ export default function Settings() {
           </p>
           <label className="field">
             <span>{t('settings.durationTolerance')}</span>
-            <input type="number" value={value('duration_tolerance_s') ?? 7}
+            <input type="number" min="0" max="120"
+              value={value('duration_tolerance_s') ?? 7}
               onChange={(e) => set('duration_tolerance_s', Number(e.target.value))} />
           </label>
           <label className="field">
             <span>{t('settings.fuzzyThreshold')}</span>
-            <input type="number" value={value('title_fuzzy_threshold') ?? 88}
+            <input type="number" min="50" max="100"
+              value={value('title_fuzzy_threshold') ?? 88}
               onChange={(e) => set('title_fuzzy_threshold', Number(e.target.value))} />
           </label>
         </div>
@@ -262,7 +267,8 @@ export default function Settings() {
           </label>
           <label className="field">
             <span>{t('settings.artworkMinPx')}</span>
-            <input type="number" value={value('artwork_min_px') ?? 600}
+            <input type="number" min="0" max="10000"
+              value={value('artwork_min_px') ?? 600}
               onChange={(e) => set('artwork_min_px', Number(e.target.value))} />
           </label>
           <label className="check">
@@ -270,6 +276,17 @@ export default function Settings() {
               onChange={(e) => set('write_lrc_file', e.target.checked)} />
             {t('settings.writeLrc')}
           </label>
+        </div>
+
+        {/* The form has existed since the first release and nothing ever
+            rendered it: `ChangePassword` was exported, its endpoint was live,
+            its whole translation block was written — and a repo-wide grep for
+            the component found exactly one hit, its own definition. So there
+            was no way to change your password at all. */}
+        <div className="card">
+          <h3>{t('auth.changeTitle')}</h3>
+          {passwordChanged && <div className="banner">{t('auth.changeDone')}</div>}
+          <ChangePassword onDone={() => setPasswordChanged(true)} />
         </div>
 
         <div className="card">
@@ -280,8 +297,13 @@ export default function Settings() {
               <span>
                 {key} — {config[key] ? t('settings.configured') : t('settings.notConfigured')}
               </span>
+              {/* No `e.target.value &&` guard. It skipped the state update
+                  when the box became empty, so `patch[key]` kept whatever was
+                  last non-empty — the whole string if it was cleared in one
+                  go, a one-character prefix if it was backspaced — and Save
+                  then wrote that back. Clearing the box now clears the key. */}
               <input type="text" placeholder="••••••••"
-                onChange={(e) => e.target.value && set(key, e.target.value)} />
+                onChange={(e) => set(key, e.target.value)} />
             </label>
           ))}
           <label className="field">

@@ -4,6 +4,66 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.6.0] - 2026-07-28
+
+The next batch from the feature audit — the ones where the interface and the
+application disagreed about what had happened.
+
+### Fixed
+
+- **The Library page reloads when the scan it started finishes.** It owns the
+  Scan button and was the one page not listening for `cadenza:job-finished`, so
+  on a fresh install you watched the job run to completion and the table stayed
+  empty and the header stayed at "0 tracks". Nothing reloaded until you pressed
+  Search or navigated away and back, which made a successful scan look like it
+  had done nothing.
+- **Every timestamp is now in your timezone.** Cadenza serialises UTC without
+  an offset, and ECMA-262 says a date-time string with no offset is *local*
+  time — so every "Started", "Moved at", "Purge after" and audit entry was read
+  as if the NAS clock were the browser's and then displayed as local, shifting
+  it by your UTC offset. On a UTC+4 machine everything read four hours late,
+  which is plausible enough that nobody caught it.
+- **A settings change reaches the job runner without a restart.** The runner
+  captured the settings object once, at import, and `save_settings` replaces it
+  — so the runner kept the values the process booted with. The visible half was
+  a scheduled purge staying in preview mode after preview was turned off; the
+  dangerous half is the other direction, where turning preview back **on** left
+  scheduled enrich, organize and convert jobs executing for real.
+- **Jobs left "running" by a restart are closed out.** The queue is rebuilt
+  empty on every start and nothing looked at what was already in the database,
+  so a job interrupted by an update or a reboot stayed "running" for ever. The
+  Stop button could not clear it either: `cancel` only rewrites a pending row.
+- **You can change your password.** The form, its endpoint and its whole
+  translation block have existed since the first release, and nothing ever
+  rendered it — a repo-wide search for the component found exactly one hit, its
+  own definition. It is in Settings now.
+- **The sign-in screen stopped pointing at a file that does not exist.** It
+  told every user to find a generated password in `initial-password.txt`.
+  Cadenza has not generated a password since 2.1.0 and never writes that file.
+- **Clearing a provider API key clears it.** The change handler skipped the
+  update when the box became empty, so Save wrote back whatever was last in it
+  — the whole key if it was cleared in one go, a one-character prefix if it was
+  backspaced.
+- **Settings number fields offer the ranges the API accepts.** The text
+  similarity field said 0–100 with no limits while the API accepts 50–100, and
+  one out-of-range value fails the whole save, losing every other edit.
+
+### Documentation
+
+- **`docs/ROADMAP.md`** — what is done, what is in progress with the audit
+  findings listed by area, what is planned, and what is deliberately not.
+- The architecture document described a Docker-wrapped package that was
+  replaced in 2.1.x. It now describes what actually ships, including why root
+  is not an option, where the data lives and why that is recorded rather than
+  re-derived, and the measured scan profile.
+- The install guide claimed Package Center still requires Container Manager for
+  the native package. `install_dep_packages` has been empty since 2.1.0.
+- Both READMEs and the operations guide described a generated first-run
+  password. That model was removed in 2.1.0; every reference now describes
+  choosing your own credentials, and the password-recovery path is documented.
+- `CONTRIBUTING.md` states the branch rule, the version-bump rule, and what to
+  do when you change a database model.
+
 ## [2.5.0] - 2026-07-28
 
 Five defects found by an audit of every feature area, each one confirmed by an
