@@ -5,6 +5,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import os
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -12,6 +13,7 @@ from pathlib import Path
 from sqlalchemy import select
 
 from app.config import get_settings
+from app.core import fingerprint, hashing
 from app.core.dedup import DeduplicationEngine, build_dry_run_report
 from app.core.organizer import Organizer
 from app.core.paths import contained
@@ -58,6 +60,7 @@ class JobRunner:
             "enrich": handle_enrich,
             "organize": handle_organize,
             "convert": handle_convert,
+            "fingerprint": handle_fingerprint,
             "quarantine_purge": handle_purge,
         }
 
@@ -138,7 +141,14 @@ class JobRunner:
         await self.broadcast({"type": "job.started", "job_id": job_id, "kind": kind})
         try:
             result = await self.handlers[kind](job_id, params, dry_run, self)
-            state, message = JobState.DONE, None
+            # A handler that honoured a stop request returns normally, with
+            # whatever it managed to do. Without this it was then recorded as
+            # `done`, so a scan the user stopped halfway reported success and
+            # its partial numbers looked like the whole library.
+            if self.is_cancelled(job_id):
+                state, message = JobState.CANCELLED, "stopped on request"
+            else:
+                state, message = JobState.DONE, None
         except Exception as exc:
             log.exception("job %s (%s) failed", job_id, kind)
             result, state, message = {}, JobState.FAILED, str(exc)[:1000]
@@ -211,13 +221,110 @@ async def handle_scan(job_id: int, params: dict, dry_run: bool, runner: JobRunne
     async def progress(done: int, total: int, current: str) -> None:
         await runner.progress(job_id, done, total, current)
 
+    # Indexing only, by default. The fingerprint and audio-checksum figures are
+    # 94% of a scan's cost and are needed by nothing except duplicate
+    # detection, so they run afterwards as their own job -- one the user can
+    # watch, stop, and resume. Before this, a 3801-file library took 40 minutes
+    # before it could be browsed at all; it now takes about two.
+    fingerprints = bool(params.get("fingerprints", False))
+    audio_md5 = bool(params.get("audio_md5", False))
+
     async with session_scope() as s:
-        stats = await LibraryScanner(s, progress).scan(
+        stats = await LibraryScanner(
+            s, progress, should_stop=lambda: runner.is_cancelled(job_id)
+        ).scan(
             root, full=bool(params.get("full")),
-            compute_fingerprints=params.get("fingerprints", True),
-            compute_audio_md5=params.get("audio_md5", True),
+            compute_fingerprints=fingerprints,
+            compute_audio_md5=audio_md5,
         )
-    return stats.as_dict()
+
+    result = stats.as_dict()
+
+    # Queue the expensive pass unless the caller did that work inline, or asked
+    # not to, or the scan itself was stopped -- in which case the user wants
+    # things to stop, not to start something longer.
+    if not (fingerprints and audio_md5) and not stats.stopped \
+            and params.get("analyze", True):
+        result["analysis_job_id"] = await runner.submit(
+            "fingerprint", {"path": str(root)}, dry_run=False)
+    return result
+
+
+async def handle_fingerprint(job_id: int, params: dict, dry_run: bool,
+                             runner: JobRunner) -> dict:
+    """Compute the figures duplicate detection needs, for tracks that lack them.
+
+    Split out of the scan because it dominates it. Measured on a DS1821+:
+    audio_md5 averages 1705ms per file and the fingerprint 678ms, against 64ms
+    for ffprobe and 19ms for the tags. Everything Cadenza shows you -- the
+    library, search, quality, artwork and lyrics coverage -- is ready without
+    either of them.
+
+    Resumable by construction: it selects the tracks still missing a value and
+    commits each batch, so stopping it and starting it again continues rather
+    than repeats. That also makes it safe to run on a schedule.
+    """
+    scope = str(contained(params["path"], get_settings().music_root)) \
+        if params.get("path") else None
+    settings = get_settings()
+    want_fingerprints = settings.acoustic_enabled
+
+    async with session_scope() as s:
+        stmt = select(Track).where(Track.status == TrackStatus.ACTIVE)
+        if scope:
+            stmt = stmt.where(Track.path.startswith(os.path.join(scope, "")))
+        missing = Track.audio_md5.is_(None)
+        if want_fingerprints:
+            missing = missing | Track.fingerprint.is_(None)
+        stmt = stmt.where(missing)
+        pending = [(t.id, t.path) for t in (await s.execute(stmt)).scalars().all()]
+
+    total = len(pending)
+    done = computed = failed = 0
+    await runner.progress(job_id, 0, total, "starting")
+
+    sem = asyncio.Semaphore(max(1, settings.workers))
+
+    async def one(track_id: int, path_str: str) -> tuple[int, str | None, str | None]:
+        async with sem:
+            path = Path(path_str)
+            if not path.is_file():
+                return track_id, None, None
+            md5 = await hashing.audio_stream_md5_async(path)
+            fpr = None
+            if want_fingerprints:
+                result = await fingerprint.compute_async(path)
+                fpr = result.fingerprint
+            return track_id, md5, fpr
+
+    batch = 25
+    for start in range(0, total, batch):
+        if runner.is_cancelled(job_id):
+            break
+        chunk = pending[start:start + batch]
+        results = await asyncio.gather(*(one(tid, p) for tid, p in chunk),
+                                       return_exceptions=True)
+        async with session_scope() as s:
+            for item in results:
+                done += 1
+                if isinstance(item, BaseException):
+                    failed += 1
+                    continue
+                track_id, md5, fpr = item
+                if md5 is None and fpr is None:
+                    continue
+                track = await s.get(Track, track_id)
+                if track is None:
+                    continue
+                if md5:
+                    track.audio_md5 = md5
+                if fpr:
+                    track.fingerprint = fpr
+                computed += 1
+        await runner.progress(job_id, done, total, chunk[-1][1])
+
+    return {"candidates": total, "computed": computed, "failed": failed,
+            "stopped": done < total}
 
 
 async def handle_dedup_analyze(job_id: int, params: dict, dry_run: bool,

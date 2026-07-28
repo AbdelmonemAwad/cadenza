@@ -318,6 +318,8 @@ const ar: Catalogue<typeof en> = {
     modeExecute: 'تنفيذ',
     viewResult: 'النتيجة',
     cancelJob: 'إلغاء',
+    stopJob: 'إيقاف',
+    stopHint: 'الإيقاف يحتفظ بكل ما أُنجز، ويمكن تشغيل المهمة مجدداً لتُكمل من حيث توقفت.',
     resultTitle: 'نتيجة المهمة',
   },
 

@@ -20,6 +20,9 @@ from app.db.models import Track, TrackStatus
 log = logging.getLogger(__name__)
 
 ProgressCb = Callable[[int, int, str], Awaitable[None]] | None
+# Returns True when the caller wants the scan to stop. Consulted between
+# batches, so a cancelled scan keeps everything it has already indexed.
+StopCb = Callable[[], bool] | None
 
 # Synology sprinkles these throughout shared folders; indexing them is noise.
 _SKIP_DIRS = {"@eaDir", "#recycle", ".DS_Store", "@tmp", "#snapshot", ".cadenza"}
@@ -34,6 +37,10 @@ class ScanStats:
     missing: int = 0
     corrupt: int = 0
     errors: int = 0
+    # True when the caller asked to stop before every file had been visited.
+    # Reported so the summary does not read like a complete pass over a library
+    # that was only half walked -- and so the missing sweep can be skipped.
+    stopped: bool = False
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -54,15 +61,36 @@ def iter_audio_files(root: Path, follow_symlinks: bool = False,
 
 
 class LibraryScanner:
-    def __init__(self, session: AsyncSession, progress: ProgressCb = None) -> None:
+    def __init__(self, session: AsyncSession, progress: ProgressCb = None,
+                 should_stop: StopCb = None) -> None:
         self.s = get_settings()
         self.session = session
         self.progress = progress
+        self.should_stop = should_stop
         self.stats = ScanStats()
 
     async def scan(self, root: Path | None = None, *, full: bool = False,
-                   compute_fingerprints: bool = True,
-                   compute_audio_md5: bool = True) -> ScanStats:
+                   compute_fingerprints: bool = False,
+                   compute_audio_md5: bool = False) -> ScanStats:
+        """Index the library.
+
+        The two expensive flags default to off, and that is the difference
+        between a library you can browse in two minutes and one you wait forty
+        minutes for. Measured on a DS1821+ over 3801 real files:
+
+            ffprobe      64ms     2.5%
+            read tags    19ms     0.7%
+            sha256       79ms     3.1%
+            audio_md5  1705ms    67.0%     <- decodes the whole file to PCM
+            fingerprint 678ms    26.6%     <- decodes 120s of it again
+
+        94% of a scan went on two figures that nothing needs in order to
+        browse, search, sort by quality or organise. They exist for duplicate
+        detection alone -- `find_exact_audio` groups by audio_md5 and
+        `find_acoustic` needs the fingerprint -- so they now belong to a
+        separate pass that runs afterwards, can be stopped, and picks up where
+        it left off.
+        """
         root = root or self.s.music_root
         if not root.is_dir():
             raise FileNotFoundError(f"music root not found: {root}")
@@ -71,9 +99,14 @@ class LibraryScanner:
             lambda: list(iter_audio_files(root, self.s.follow_symlinks, self.s.skip_hidden)))
         self.stats.found = len(files)
 
+        # The separator is part of the prefix. Without it "/volume1/music" also
+        # matches "/volume1/musicbox", so a scan of one folder would load the
+        # other folder's rows -- and then mark every one of them MISSING,
+        # because this pass never visits them.
+        prefix = os.path.join(str(root), "")
         existing = {
             row.path: row for row in (await self.session.execute(
-                select(Track).where(Track.path.startswith(str(root)))
+                select(Track).where(Track.path.startswith(prefix))
             )).scalars().all()
         }
         seen: set[str] = set()
@@ -94,19 +127,31 @@ class LibraryScanner:
         # Commit in batches to bound memory on libraries with 100k+ files.
         batch = 200
         for start in range(0, len(files), batch):
+            # Checked between batches rather than per file: the batch that is
+            # already in flight finishes and commits, so stopping never
+            # discards work that was done. A scan of 3801 files stops within a
+            # batch of 200, which is seconds.
+            if self.should_stop and self.should_stop():
+                self.stats.stopped = True
+                break
             chunk = files[start:start + batch]
             await asyncio.gather(*(handle(start + i, p) for i, p in enumerate(chunk)))
             await self.session.commit()
 
-        # Anything indexed but not seen this pass has disappeared from disk.
-        for path, row in existing.items():
-            if path not in seen and row.status == TrackStatus.ACTIVE:
-                row.status = TrackStatus.MISSING
-                self.stats.missing += 1
+        # Anything indexed but not seen this pass has disappeared from disk --
+        # but only if the pass actually finished. After a stop, most of the
+        # library is legitimately unvisited, and marking it all MISSING would
+        # turn a cancelled scan into a data-quality incident.
+        if not self.stats.stopped:
+            for path, row in existing.items():
+                if path not in seen and row.status == TrackStatus.ACTIVE:
+                    row.status = TrackStatus.MISSING
+                    self.stats.missing += 1
         await self.session.commit()
 
         if self.progress:
-            await self.progress(len(files), len(files), "done")
+            await self.progress(len(seen), len(files),
+                                "stopped" if self.stats.stopped else "done")
         return self.stats
 
     async def _process(self, path: Path, existing: dict[str, Track], full: bool,

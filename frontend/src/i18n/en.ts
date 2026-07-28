@@ -318,6 +318,8 @@ const en = {
     modeExecute: 'execute',
     viewResult: 'Result',
     cancelJob: 'Cancel',
+    stopJob: 'Stop',
+    stopHint: 'Stopping keeps everything already done; the job can be run again to continue.',
     resultTitle: 'Job result',
   },
 
