@@ -5,6 +5,7 @@ import LanguageSwitcher from './components/LanguageSwitcher'
 import { useI18n, type TranslationKey } from './i18n'
 import Login from './pages/Login'
 import AppleMusic from './pages/AppleMusic'
+import Cleanup from './pages/Cleanup'
 import Convert from './pages/Convert'
 import Dashboard from './pages/Dashboard'
 import Duplicates from './pages/Duplicates'
@@ -21,6 +22,7 @@ const NAV: { to: string; key: TranslationKey; icon: string }[] = [
   { to: '/duplicates', key: 'nav.duplicates', icon: '⧉' },
   { to: '/convert', key: 'nav.convert', icon: '⇄' },
   { to: '/quarantine', key: 'nav.quarantine', icon: '⌫' },
+  { to: '/cleanup', key: 'nav.cleanup', icon: '✧' },
   { to: '/apple', key: 'nav.apple', icon: '' },
   { to: '/jobs', key: 'nav.jobs', icon: '⏱' },
   { to: '/logs', key: 'nav.logs', icon: '≡' },
@@ -124,6 +126,7 @@ export default function App() {
           <Route path="/duplicates" element={<Duplicates />} />
           <Route path="/convert" element={<Convert />} />
           <Route path="/quarantine" element={<Quarantine />} />
+          <Route path="/cleanup" element={<Cleanup />} />
           <Route path="/apple" element={<AppleMusic />} />
           <Route path="/jobs" element={<Jobs />} />
           <Route path="/logs" element={<Logs />} />

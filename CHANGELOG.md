@@ -4,6 +4,34 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.10.0] - 2026-07-28
+
+### Added
+
+- **A Tidy up page**, for what a long-lived library leaves behind: empty
+  folders where an album used to be, a `.lrc` whose audio was deleted,
+  Synology's `@eaDir` caches, half-written files from an interrupted
+  conversion, index entries for files that are gone, and quarantine records
+  whose file has vanished.
+
+  Six categories, each opt-in and each explained in place. Nothing is ticked
+  when the page opens and the run button stays disabled until you have looked
+  at the list — the categories do very different things, and "select all and
+  go" is not offered as the easy path.
+
+  **It never touches an audio file.** The check runs when the list is drawn up
+  *and* again at the moment of the change, because those are separate requests
+  and a file can appear between them — a conversion finishing, a copy landing
+  over SMB. A `.flac` carrying a `.part-` marker in its name is still refused:
+  the marker is a heuristic, the extension is not.
+
+  Anything that is not obviously worthless goes to **quarantine**, not to
+  `/dev/null` — a stray `.lrc` may be lyrics you wrote yourself. Empty folders
+  are removed outright, with `rmdir` rather than `rmtree`, so if anything has
+  appeared since the scan the removal fails and leaves it alone. A `@eaDir`
+  that somehow contains audio is left alone entirely; that is a surprise worth
+  stopping for rather than resolving in favour of tidiness.
+
 ## [2.9.0] - 2026-07-28
 
 ### Added

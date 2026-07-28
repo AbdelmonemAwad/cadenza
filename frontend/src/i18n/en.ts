@@ -30,6 +30,7 @@ const en = {
     apple: 'Apple Music',
     jobs: 'Jobs & Schedule',
     logs: 'Activity Log',
+    cleanup: 'Tidy up',
     statistics: 'Statistics',
     settings: 'Settings',
   },
@@ -330,6 +331,24 @@ const en = {
     notReadable: 'not readable by Cadenza',
     noSubfolders: 'No sub-folders here',
     truncated: 'Only the first 500 folders are shown.',
+  },
+
+  cleanup: {
+    title: 'Tidy up',
+    subtitle: 'Remove what a long-lived library leaves behind — never the music',
+    choose: 'What would you like tidied?',
+    preview: 'Show me what would go',
+    previewFirst: 'Nothing is removed until you have looked at the list.',
+    run: 'Remove them',
+    started: 'Tidy-up started as job {id}.',
+    found: '{count} things can go',
+    nothingToDo: 'Nothing to tidy. Your library is clean.',
+    refused: 'Refused, deliberately:',
+    colCategory: 'Kind',
+    colCount: 'Count',
+    colSize: 'Size',
+    whatExactly: 'Exactly what',
+    rowOnly: 'index entry',
   },
 
   stats: {

@@ -14,6 +14,8 @@ from sqlalchemy import select
 
 from app.config import get_settings
 from app.core import fingerprint, hashing
+from app.core.cleanup import CATEGORIES as CLEANUP_CATEGORIES
+from app.core.cleanup import LibraryCleaner
 from app.core.dedup import DeduplicationEngine, build_dry_run_report
 from app.core.organizer import Organizer
 from app.core.paths import contained
@@ -61,6 +63,7 @@ class JobRunner:
             "organize": handle_organize,
             "convert": handle_convert,
             "fingerprint": handle_fingerprint,
+            "cleanup": handle_cleanup,
             "quarantine_purge": handle_purge,
         }
 
@@ -602,6 +605,37 @@ async def handle_organize(job_id: int, params: dict, dry_run: bool,
         for p in plans if not p.changed and p.reason
     ][:300]
     out["unchanged"] = sum(1 for p in plans if not p.changed and not p.reason)
+    return out
+
+
+async def handle_cleanup(job_id: int, params: dict, dry_run: bool,
+                         runner: JobRunner) -> dict:
+    """Remove what a long-lived library leaves behind. Never the music.
+
+    Every category is opt-in: with no `categories` this does nothing rather
+    than guessing, because the difference between the categories is the
+    difference between deleting a thumbnail cache and quarantining someone's
+    hand-written lyrics.
+    """
+    categories = set(params.get("categories") or [])
+    if not categories:
+        return {"dry_run": dry_run, "note": "no categories selected",
+                "removed": 0, "quarantined": 0, "rows_removed": 0,
+                "by_category": {}}
+
+    unknown = categories - set(CLEANUP_CATEGORIES)
+    if unknown:
+        raise ValueError(f"unknown cleanup categories: {sorted(unknown)}")
+
+    async with session_scope() as s:
+        cleaner = LibraryCleaner(s)
+        await runner.progress(job_id, 0, 1, "looking for what can go")
+        report = await cleaner.scan(categories, limit=int(params.get("limit", 5000)))
+        await runner.progress(job_id, 0, len(report.items), "found")
+        out = await cleaner.apply(report, dry_run=dry_run, job_id=job_id)
+
+    out["preview"] = [item.as_dict() for item in report.items][:300]
+    out["found"] = len(report.items)
     return out
 
 
