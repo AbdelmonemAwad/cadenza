@@ -316,9 +316,8 @@ library root land directly under the date folder as a bare filename.
 | `logs/cadenza.log` (+ up to 5 rotations) | Application log, 8 MB per file | default |
 | `cache/`, `cache/artwork/` | Downloaded artwork | default |
 | `settings.json` | UI-editable overrides — **includes AcoustID, Discogs and Last.fm keys in plain text** | 0600 |
-| `auth.json` | Password hash, `must_change`, `session_epoch` | 0600 |
+| `auth.json` | Username, password hash, `session_epoch` | 0600 |
 | `secret_key` | Session signing key, 48 bytes hex | 0600 |
-| `initial-password.txt` | First run only; deleted once you set a password | 0600 |
 | `apple_user_token.json` | Apple Music user token | 0600 |
 | `AuthKey.p8` | Apple Music private key, if you supplied one | 0600 |
 
@@ -363,31 +362,34 @@ and does not pretend to.
 
 ### First run
 
-If `auth.json` does not exist, startup generates a random password
-(`secrets.token_urlsafe(15)`) before anything is served. There is no default
-password: a shared one would look like protection while providing none.
+If `auth.json` does not exist there is no account, and the interface shows a
+create-your-account screen instead of a sign-in form. The user picks both the
+username and the password.
 
-The password is **not written to the log.** The log says only where to find it.
-It is written to `/config/initial-password.txt` at mode 0600, because NAS users
-routinely cannot read container logs and would otherwise be locked out of their
-own install. That file is deleted automatically the moment you set a real
-password.
+Nothing is generated. Earlier versions produced a random password, wrote it to
+`/config/initial-password.txt` and forced a change at first sign-in — which
+handed the user a credential they never asked for and had to go and find, and
+left a secret sitting on a shared folder until they got round to changing it.
+The file is removed on upgrade and nothing reads it.
 
-### The forced change is enforced server-side
+### Claiming an install happens exactly once
 
-While the generated password is still in force, `auth.json` carries
-`must_change: true`, and signing in issues a session whose subject is `pwreset`
-rather than `admin`. The shared `current_user` dependency — applied at router
-level, so a new endpoint is protected by default — rejects a `pwreset` subject
-with 403 on every route except the password endpoints. Refreshing the page or
-calling the API directly does not skip it.
+`POST /auth/setup` answers `201` the first time and `409` on every attempt
+afterwards, so an install that is already set up cannot be claimed by whoever
+reaches it next. It is rate limited on the same limiter as sign-in, because it
+is reachable without a session until it is used.
 
-`GET /auth/status` reports only whether credentials exist. It deliberately does
-not reveal that the box is still on its generated password; the UI learns that
-from the login response.
+Sign-in takes the username as well as the password, and hashes the password
+even when the username is wrong, so the timing does not reveal which of the two
+was incorrect.
+
+`GET /auth/status` reports only whether an account exists — `{"configured":
+bool}` — which is what the interface needs to decide between the two screens
+and nothing more.
 
 New passwords must be at least 10 characters and must differ from the current
-one.
+one. Changing the password bumps `session_epoch`, which invalidates every
+existing session.
 
 ### Sessions and revocation
 
@@ -661,8 +663,11 @@ The practical consequences:
 Because `auth.json`, `secret_key` and `settings.json` are separate files, losing
 the database alone does not cost you your password or your API keys. Losing
 `auth.json` — or having it truncated to zero bytes, which `load_credentials`
-treats as unconfigured — causes the instance to generate a fresh first-run
-password on next start and write `initial-password.txt` again.
+treats as unconfigured — puts the instance back to having no account at all, so
+the next person to open it is offered the create-your-account screen. That is
+also the recovery path if you forget your password: stop the package, remove
+`auth.json`, start it again, and claim it afresh. Every existing session dies
+with the file.
 
 ### What cannot be recovered
 

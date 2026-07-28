@@ -9,7 +9,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![DSM](https://img.shields.io/badge/DSM-7.x-0f7bd8.svg)](https://www.synology.com/dsm)
 
-[English](README.md) · [المعمارية](docs/ARCHITECTURE.md) · [المساهمة](CONTRIBUTING.md)
+[English](README.md) · [خارطة الطريق](docs/ROADMAP.md) · [المعمارية](docs/ARCHITECTURE.md) · [المساهمة](CONTRIBUTING.md)
 
 </div>
 

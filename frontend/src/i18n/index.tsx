@@ -83,9 +83,30 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   const n = useCallback(
     (value: number) => new Intl.NumberFormat(locale).format(value), [locale])
 
+  /**
+   * Format a timestamp in the viewer's own timezone.
+   *
+   * The `Z` is load-bearing. Cadenza stores UTC and serialises it without an
+   * offset — `"2026-07-27T09:12:33.123456"` — and ECMA-262 says a date-time
+   * string with no offset is *local* time. So every timestamp in the app was
+   * read as if the NAS clock were the browser's clock and then displayed as
+   * local, shifting it by the viewer's UTC offset: on a UTC+4 machine every
+   * "Started", "Moved at", "Purge after" and audit-log entry read four hours
+   * late. It looked plausible, which is why nobody caught it.
+   *
+   * A string that already carries an offset (or a `Z`) is left alone, so this
+   * keeps working if the backend starts sending them.
+   */
   const d = useCallback((value: string | number | Date | null | undefined) => {
     if (value === null || value === undefined) return '—'
-    const date = value instanceof Date ? value : new Date(value)
+    let date: Date
+    if (value instanceof Date) {
+      date = value
+    } else if (typeof value === 'string' && !/(Z|[+-]\d{2}:?\d{2})$/.test(value)) {
+      date = new Date(`${value}Z`)
+    } else {
+      date = new Date(value)
+    }
     return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString(locale)
   }, [locale])
 

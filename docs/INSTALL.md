@@ -19,7 +19,7 @@ Both end up serving the same application at `http://<nas-address>:8760`.
 |---|---|---|
 | **CPU architecture** | `x86_64` only | `x86_64` only |
 | **DSM** | 7.2 or newer — the package declares `os_min_ver="7.2-64561"` and DSM refuses to install it below that | 7.2 or newer in practice, because Container Manager itself is a 7.2 package |
-| **Docker / Container Manager** | Not used by the service — but Package Center still requires it, see the note below | Required |
+| **Docker / Container Manager** | Not needed at all. The package declares no dependencies | Required |
 | **Free space** | Roughly 300–400 MB (interpreter, libraries and FFmpeg travel inside the package) | Roughly 2 GB for the image and the library index |
 | **Extra space** | Whatever your library index and artwork cache grow to, in the config folder | Same |
 
@@ -33,12 +33,12 @@ ARM-based unit will not run Cadenza by either path:
 There is no ARM build and no workaround. Supported units are the Intel/AMD
 models — DS1821+, DS1621+, DS920+, DVA3221 and similar.
 
-**The Container Manager dependency on the native path is real.** The package's
-`INFO` file still declares `install_dep_packages="ContainerManager>=20.10"`,
-so Package Center will insist Container Manager is installed before it will
-install Cadenza — even though the native service never talks to Docker. Install
-Container Manager if Package Center asks for it; you do not need to run anything
-in it.
+**The package needs nothing else installed.** `install_dep_packages` is empty:
+Package Center will not ask you for Container Manager, Python, or anything
+else. Earlier builds did declare a Container Manager dependency, which was
+wrong — the native service has never talked to Docker — and it was removed in
+2.1.0. If you are upgrading from one of those builds you can uninstall
+Container Manager afterwards, as far as Cadenza is concerned.
 
 **Unsigned package.** The `.spk` is not signed by Synology. Package Center will
 warn you, and depending on your settings may refuse outright. If it does:
@@ -305,7 +305,7 @@ Three folders, three different reasons.
 | Music library | Read, at minimum | Scanning reads every audio file to hash it, decode it for the audio-stream hash, and fingerprint it. |
 | Music library | Write, eventually | Only if you want it to rename, move, retag, convert or organise files. Deduplication does not need this — quarantining a duplicate does. |
 | Quarantine (`<library>/.cadenza-quarantine`) | Write | This is where "deleted" files go. Cadenza never unlinks a file during a normal cleanup; it moves it, mirroring the original tree so restores are obvious. Same volume as the library, or every move becomes a copy. |
-| Config folder | Write | Database, rotating logs, artwork cache, `settings.json`, `initial-password.txt`. The service refuses to start without it, deliberately, rather than failing on its first write later. |
+| Data folder | Write | Database, rotating logs, artwork cache, `settings.json`, `auth.json`, the Apple signing key. Leave the wizard's field empty and this is inside the package, always writable and preserved across updates. Wherever it ends up, Cadenza records it and keeps using it — and refuses to start rather than opening an empty library if it later becomes unreachable. |
 
 Cadenza never needs root and never runs as root on either path. The container
 runs with `no-new-privileges`, and the package runs as an unprivileged DSM
@@ -382,24 +382,26 @@ firewall rule yourself if the firewall is on.
 
 ## 8. First sign-in
 
-There is no default password. One is generated the first time Cadenza starts,
-because a shared default would look like protection while providing none.
+**You choose the username and the password.** There is no default credential,
+nothing is generated, and nothing is written to a file for you to go and find.
 
-1. Read it from **`initial-password.txt` in your config folder** — the same
-   folder you named in the wizard or mounted at `/config`. It is written mode
-   `0600`. The application also logs *where* it is (never the password itself)
-   in `<config folder>/logs/cadenza.log`.
+1. Open Cadenza. A fresh install has no account at all, so it shows a
+   create-your-account screen rather than a sign-in form.
+2. Pick a username and a password. The password is hashed with scrypt and
+   stored in `auth.json` in your data folder, mode `0600`. The password itself
+   is never written anywhere else, and never appears in a log.
+3. That is it — you are signed in.
 
-   ```sh
-   sudo cat /volume1/docker/cadenza/initial-password.txt
-   ```
+`POST /auth/setup` works exactly once and answers `409` afterwards, so nobody
+can claim an install you have already set up. It is rate limited like sign-in,
+because it is reachable without a session until it is used.
 
-2. Sign in with it. The username is the administrator account created on first
-   run.
-3. **You are required to change it immediately.** This is enforced server-side,
-   not by the sign-in screen, so refreshing or navigating away does not skip it.
-4. Once you set your own password, `initial-password.txt` is deleted
-   automatically. Changing your password also ends every other session.
+Change your password later from **Settings**. Changing it ends every other
+session.
+
+Versions before 2.1.0 generated a password and wrote it to
+`initial-password.txt`. They no longer do; the file is removed on upgrade and
+nothing reads it.
 
 Sessions last 14 days. **Sign out everywhere** is available if you think a
 session leaked.
