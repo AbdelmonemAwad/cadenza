@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.core.quarantine import QuarantineError, QuarantineManager
 from app.db.base import get_session
 from app.db.models import QuarantineItem
@@ -73,5 +74,21 @@ async def purge(body: PurgeRequest = Body(default=PurgeRequest())) -> dict:
     of how the setting was configured. Enabling permanent deletion is now a
     deliberate settings change.
     """
+    # Answered here as well as inside the job. The block is real either way --
+    # QuarantineManager.purge refuses regardless of how it was reached, and
+    # that stays the enforcement point -- but a caller who asks for a purge
+    # with permanent deletion switched off used to get a job id and a 200, and
+    # the refusal then appeared only in the job's result. The interface said
+    # "started" and nothing happened.
+    #
+    # Not a dry run, which writes nothing and is how the user previews what
+    # would go.
+    if not body.dry_run and not get_settings().hard_delete_allowed:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Permanent deletion is off. Quarantined files are kept until you "
+            "turn on 'Allow permanent deletion' in Settings; until then they "
+            "can always be restored.")
+
     job_id = await runner.submit("quarantine_purge", {}, dry_run=body.dry_run)
     return {"job_id": job_id, "dry_run": body.dry_run}
