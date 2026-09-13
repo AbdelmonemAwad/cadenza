@@ -33,6 +33,52 @@ _BIT_DEPTH_MAP = {
 }
 
 
+class ProbeUnavailable(RuntimeError):
+    """ffprobe itself cannot be run -- as opposed to a file it cannot read.
+
+    The two used to collapse into one result. A missing binary came back as an
+    AudioInfo with `error` set and `corrupt` left False, and the scanner reads
+    `corrupt` alone -- so every file was indexed as healthy with no codec, no
+    duration and no bitrate, the scan reported success, and the only trace of
+    the real problem was a string on a dataclass that nothing displayed. A NAS
+    whose ffprobe was broken -- a package upgrade that failed halfway, a wrong
+    `CADENZA_FFPROBE_BIN` -- got a library that looked fine and held none of
+    what a scan exists to find out.
+
+    A verdict on the tool is not a verdict on the file, so it is raised, not
+    returned, and the scan that depends on it fails with the reason.
+    """
+
+
+def check_available(timeout: int = 15) -> str:
+    """Prove ffprobe can run before a scan depends on it thousands of times.
+
+    Returns the first line of `ffprobe -version`. Raises ProbeUnavailable with
+    the configured path and the reason it could not be run.
+    """
+    binary = get_settings().ffprobe_bin
+    try:
+        res = subprocess.run([binary, "-version"], capture_output=True,
+                             timeout=timeout, check=False)
+    except subprocess.TimeoutExpired as exc:
+        raise ProbeUnavailable(
+            f"{binary} did not answer -version within {timeout}s") from exc
+    except OSError as exc:
+        raise ProbeUnavailable(_launch_failure(binary, exc)) from exc
+    if res.returncode != 0:
+        err = res.stderr.decode("utf-8", "ignore").strip()[:200]
+        raise ProbeUnavailable(
+            f"{binary} -version exited {res.returncode}: {err or 'no output'}")
+    lines = res.stdout.decode("utf-8", "ignore").splitlines()
+    return lines[0] if lines else "ffprobe"
+
+
+def _launch_failure(binary: str, exc: OSError) -> str:
+    reason = exc.strerror or exc.__class__.__name__
+    return (f"cannot run {binary}: {reason}. Check CADENZA_FFPROBE_BIN, or "
+            f"reinstall the package if its bundled ffprobe is missing")
+
+
 def probe(path: Path, timeout: int = 60) -> AudioInfo:
     s = get_settings()
     cmd = [
@@ -43,8 +89,10 @@ def probe(path: Path, timeout: int = 60) -> AudioInfo:
         res = subprocess.run(cmd, capture_output=True, timeout=timeout, check=False)
     except subprocess.TimeoutExpired:
         return AudioInfo(corrupt=True, error="ffprobe timeout")
-    except FileNotFoundError:
-        return AudioInfo(error="ffprobe not found")
+    except OSError as exc:
+        # The launch failed -- binary missing, not executable, a directory --
+        # which says nothing about the file, so it is not returned as if it did.
+        raise ProbeUnavailable(_launch_failure(s.ffprobe_bin, exc)) from exc
 
     if res.returncode != 0:
         return AudioInfo(corrupt=True,

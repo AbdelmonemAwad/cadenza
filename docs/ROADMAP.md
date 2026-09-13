@@ -97,29 +97,41 @@ root is the single source of truth and every change that ships bumps it.
   The endpoint takes no path parameter and can only ever open the file the
   application is writing.
 
+### The rest of the audit — 2.10.1 to 2.10.3
+
+Verified by the test suite and CI's package build. The hardware pass over
+these is listed under **In progress**.
+
+- Discogs can reject a release again: its relevance check compared the
+  searched title against itself and scored every release 1.0.
+- One failed request no longer replaces the dashboard until the browser is
+  reloaded, and the Activity log says when it could not load.
+- A scan cannot index the quarantine, whatever it is named and whatever
+  `skip_hidden` is set to; tidying up cannot walk into it either.
+- A scan with an unusable `ffprobe` fails and names the binary, instead of
+  indexing the whole library as healthy with no technical data.
+- The duplicates header sums the same set it counts; "Started" on a job is
+  when it started; schedule actions report their failures.
+- "Matched tracks" refreshes after a run; linking waits for MusicKit's own
+  ready event rather than a 400 ms guess; imported playlists — and the
+  entries the library lacks, with their Apple Music links — are listed on
+  the page.
+
 ---
 
 ## In progress
 
 An audit of every feature area produced 51 confirmed defects, each verified by
-an independent pass before it was accepted. Thirty have been fixed and shipped
-in 2.5.0 through 2.8.0 — the data-integrity ones first, then the places where
-the interface and the application disagreed, then the wrong numbers.
+an independent pass before it was accepted. Thirty shipped in 2.5.0 through
+2.8.0 — the data-integrity ones first, then the places where the interface
+and the application disagreed, then the wrong numbers. The ten that were
+listed here after that shipped in 2.10.1 and 2.10.3, and a further one found
+in the meantime in 2.10.2. Nothing from the audit is outstanding.
 
-What is left, in the order it is being worked through:
-
-| area | what you see |
-|---|---|
-| Metadata | Discogs' relevance check can never reject a release: it compares the searched title against itself |
-| Apple Music | "Matched tracks" is not refreshed after a match run |
-| Apple Music | "Import and match" stores its result where nothing reads it |
-| Apple Music | linking races MusicKit's loader on a fixed 400 ms wait |
-| Dashboard | one failed request replaces the whole page, permanently |
-| Activity log | every fetch error is swallowed and shows an empty, silent table |
-| Library | a scan with an unusable `ffprobe` indexes the whole library as healthy |
-| Jobs | "Started" shows when the job was queued, not when it started |
-| Jobs | schedule actions report nothing when they fail |
-| Duplicates | the header mixes a server-wide count with a saving summed over one page |
+What is open is the gate at the top of this file. 2.10.3 was verified by the
+test suite and the package build in CI, not on a DS1821+; a pass over the
+2.10.x changes on real hardware is the next step, and until it happens they
+stand in **Done** on the strength of CI alone.
 
 ---
 

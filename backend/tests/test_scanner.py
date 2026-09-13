@@ -130,3 +130,44 @@ async def test_the_expensive_figures_are_off_by_default(tmp_path: Path) -> None:
     sig = inspect.signature(LibraryScanner.scan)
     assert sig.parameters["compute_fingerprints"].default is False
     assert sig.parameters["compute_audio_md5"].default is False
+
+
+async def test_an_unusable_ffprobe_fails_the_scan_instead_of_indexing_everything(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A missing ffprobe used to be reported per file, on a field nothing read.
+
+    `probe()` answered a FileNotFoundError with an AudioInfo whose `corrupt`
+    was False. The scanner reads `corrupt` alone, so every file was indexed
+    as ACTIVE with no codec, no duration and no bitrate -- and the scan
+    reported success. The library looked fine and held none of what a scan
+    exists to find out. Now the job fails, names the binary, and indexes
+    nothing it could not look at.
+    """
+    from app.config import get_settings
+    from app.core.audio_probe import ProbeUnavailable
+
+    await init_db()
+    root = tmp_path / "music"
+    _write_library(root, 3)
+    monkeypatch.setattr(get_settings(), "ffprobe_bin", str(tmp_path / "no-such-ffprobe"))
+
+    async with SessionFactory() as s:
+        with pytest.raises(ProbeUnavailable) as failure:
+            await LibraryScanner(s).scan(root)
+        assert "no-such-ffprobe" in str(failure.value), "the message must name the binary"
+
+        rows = (await s.execute(
+            select(Track).where(Track.path.startswith(str(root))))).scalars().all()
+        assert rows == [], "files were indexed although nothing could probe them"
+
+
+async def test_probe_raises_rather_than_returning_a_healthy_looking_result(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The tool being absent is not a verdict on the file, so it is not
+    returned as one: a result with `corrupt=False` reads as healthy."""
+    from app.config import get_settings
+    from app.core.audio_probe import ProbeUnavailable, probe
+
+    monkeypatch.setattr(get_settings(), "ffprobe_bin", str(tmp_path / "no-such-ffprobe"))
+    with pytest.raises(ProbeUnavailable):
+        probe(tmp_path / "anything.mp3")

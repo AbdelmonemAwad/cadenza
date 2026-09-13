@@ -134,6 +134,15 @@ class LibraryScanner:
         if not root.is_dir():
             raise FileNotFoundError(f"music root not found: {root}")
 
+        # Prove the probe works before depending on it thousands of times. A
+        # missing or broken ffprobe used to be reported per file as "not
+        # found" on a dataclass field nothing read, so the scan carried on,
+        # indexed every file as healthy with no codec, duration or bitrate,
+        # and reported success. The user got a library that looked fine and
+        # held none of what a scan exists to find out. Now the job fails, and
+        # says which binary and why.
+        await asyncio.to_thread(audio_probe.check_available)
+
         files = await asyncio.to_thread(
             lambda: list(iter_audio_files(root, self.s.follow_symlinks, self.s.skip_hidden)))
         self.stats.found = len(files)
@@ -150,12 +159,23 @@ class LibraryScanner:
         }
         seen: set[str] = set()
         sem = asyncio.Semaphore(max(1, self.s.workers))
+        # Set if ffprobe stops being runnable mid-scan -- a package upgrade
+        # replacing the binary under a running job. Not a per-file error:
+        # every file after it would fail the same way, and counting them all
+        # as `errors` while the scan "completes" is the outcome the preflight
+        # above exists to prevent.
+        fatal: list[audio_probe.ProbeUnavailable] = []
 
         async def handle(idx: int, path: Path) -> None:
             async with sem:
+                if fatal:
+                    return
                 try:
                     await self._process(path, existing, full,
                                         compute_fingerprints, compute_audio_md5)
+                except audio_probe.ProbeUnavailable as exc:
+                    fatal.append(exc)
+                    return
                 except Exception as exc:
                     self.stats.errors += 1
                     log.exception("scan failed for %s: %s", path, exc)
@@ -176,6 +196,11 @@ class LibraryScanner:
             chunk = files[start:start + batch]
             await asyncio.gather(*(handle(start + i, p) for i, p in enumerate(chunk)))
             await self.session.commit()
+            if fatal:
+                # Everything indexed so far is kept. The job fails with the
+                # reason rather than finishing over a library it could not
+                # look at, and the missing sweep below is never reached.
+                raise fatal[0]
 
         # Anything indexed but not seen this pass has disappeared from disk --
         # but only if the pass actually finished. After a stop, most of the

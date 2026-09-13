@@ -5,7 +5,7 @@ import { useI18n } from '../i18n'
 type Job = {
   id: number; kind: string; state: string; dry_run: boolean
   processed: number; total: number; message: string | null
-  created_at: string; finished_at: string | null
+  created_at: string; started_at: string | null; finished_at: string | null
 }
 type Task = {
   id: number; name: string; job_kind: string; cron: string
@@ -24,16 +24,22 @@ export default function Jobs() {
   const [kinds, setKinds] = useState<string[]>([])
   const [detail, setDetail] = useState<unknown>(null)
   const [message, setMessage] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const [form, setForm] = useState({ name: '', job_kind: 'scan', cron: '0 3 * * *' })
 
   const load = () => {
-    api.get<{ items: Job[] }>('/jobs?limit=30').then((r) => setJobs(r.items)).catch(() => {})
-    api.get<Task[]>('/jobs/schedule/tasks').then(setTasks).catch(() => {})
+    // Surfaced, not swallowed. `.catch(() => {})` left both tables empty and
+    // indistinguishable from a NAS with nothing scheduled and nothing run.
+    // Cleared on success, so one dropped poll does not leave the banner up.
+    Promise.all([
+      api.get<{ items: Job[] }>('/jobs?limit=30').then((r) => setJobs(r.items)),
+      api.get<Task[]>('/jobs/schedule/tasks').then(setTasks),
+    ]).then(() => setError(null)).catch((e) => setError((e as Error).message))
   }
 
   useEffect(() => {
     load()
-    api.get<string[]>('/jobs/kinds').then(setKinds).catch(() => {})
+    api.get<string[]>('/jobs/kinds').then(setKinds).catch((e) => setError((e as Error).message))
     const timer = setInterval(load, 8000)
     return () => clearInterval(timer)
   }, [])
@@ -48,10 +54,45 @@ export default function Jobs() {
     } catch (e) { setMessage((e as Error).message) }
   }
 
+  // Every action below used to call the API and reload, with no catch. A
+  // toggle, run or delete that failed changed nothing on screen and said
+  // nothing, so the natural response was to press the button again.
   const toggle = async (task: Task) => {
-    await api.post('/jobs/schedule/tasks', { ...task, enabled: !task.enabled })
-    load()
+    setMessage(null)
+    try {
+      await api.post('/jobs/schedule/tasks', { ...task, enabled: !task.enabled })
+      load()
+    } catch (e) { setMessage((e as Error).message) }
   }
+
+  const runNow = async (task: Task) => {
+    setMessage(null)
+    try {
+      const r = await api.post<{ job_id: number }>(`/jobs/schedule/tasks/${task.id}/run`)
+      setMessage(t('jobs.runQueued', { id: r.job_id }))
+      load()
+    } catch (e) { setMessage((e as Error).message) }
+  }
+
+  const remove = async (task: Task) => {
+    setMessage(null)
+    try {
+      await api.del(`/jobs/schedule/tasks/${task.id}`)
+      setMessage(t('jobs.deleted'))
+      load()
+    } catch (e) { setMessage((e as Error).message) }
+  }
+
+  const cancel = async (job: Job) => {
+    setMessage(null)
+    try {
+      await api.post(`/jobs/${job.id}/cancel`)
+      load()
+    } catch (e) { setMessage((e as Error).message) }
+  }
+
+  const viewResult = (job: Job) =>
+    api.get(`/jobs/${job.id}`).then(setDetail).catch((e) => setMessage((e as Error).message))
 
   return (
     <>
@@ -59,6 +100,7 @@ export default function Jobs() {
         <h1>{t('jobs.title')}</h1>
         <p>{t('jobs.subtitle')}</p>
       </div>
+      {error && <div className="banner danger">{t('jobs.loadFailed', { error })}</div>}
       {message && <div className="banner">{message}</div>}
 
       <div className="card" style={{ marginBottom: 16 }}>
@@ -107,12 +149,10 @@ export default function Jobs() {
                   <button className="btn sm" onClick={() => toggle(task)}>
                     {task.enabled ? t('jobs.disable') : t('jobs.enable')}
                   </button>{' '}
-                  <button className="btn sm"
-                    onClick={() => api.post(`/jobs/schedule/tasks/${task.id}/run`).then(load)}>
+                  <button className="btn sm" onClick={() => runNow(task)}>
                     {t('jobs.runNow')}
                   </button>{' '}
-                  <button className="btn sm danger"
-                    onClick={() => api.del(`/jobs/schedule/tasks/${task.id}`).then(load)}>
+                  <button className="btn sm danger" onClick={() => remove(task)}>
                     {t('jobs.delete')}
                   </button>
                 </td>
@@ -149,11 +189,16 @@ export default function Jobs() {
                     {job.dry_run ? t('jobs.modeDryRun') : t('jobs.modeExecute')}
                   </span>
                 </td>
-                <td className="muted">{d(job.created_at)}</td>
+                {/* "Started" showed created_at -- when the job was queued.
+                    Behind a long scan a job can wait an hour, and the column
+                    then said it had been running that whole time. The queue
+                    time is still there, on hover. */}
+                <td className="muted" title={t('jobs.queuedAt', { when: d(job.created_at) })}>
+                  {d(job.started_at)}
+                </td>
                 <td className="muted truncate" style={{ maxWidth: 240 }}>{job.message ?? ''}</td>
                 <td style={{ whiteSpace: 'nowrap' }}>
-                  <button className="btn sm"
-                    onClick={() => api.get(`/jobs/${job.id}`).then(setDetail)}>
+                  <button className="btn sm" onClick={() => viewResult(job)}>
                     {t('jobs.viewResult')}
                   </button>
                   {/* Queued jobs are cancellable too -- the runner has always
@@ -162,7 +207,7 @@ export default function Jobs() {
                       be dropped from here. */}
                   {(job.state === 'running' || job.state === 'pending') && (
                     <button className="btn sm danger" style={{ marginInlineStart: 4 }}
-                      onClick={() => api.post(`/jobs/${job.id}/cancel`).then(load)}>
+                      onClick={() => cancel(job)}>
                       {job.state === 'running' ? t('jobs.stopJob') : t('jobs.cancelJob')}
                     </button>
                   )}

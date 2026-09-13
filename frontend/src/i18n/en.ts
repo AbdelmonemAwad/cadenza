@@ -289,6 +289,18 @@ const en = {
     colDescription: 'Description',
     importAndMatch: 'Import and match',
     importResult: 'Imported: {matched} matched locally, {unmatched} not found.',
+    importedTitle: 'Imported playlists',
+    noImports: 'No playlist has been imported yet.',
+    colMatched: 'In your library',
+    colUnmatched: 'Not in your library',
+    colImported: 'Imported',
+    unmatchedHint:
+      'These entries have no match in your library. Open one to listen to it or add it '
+      + 'in Apple Music.',
+    musickitLoadFailed: 'Could not load MusicKit JS from js-cdn.music.apple.com.',
+    musickitTimeout:
+      'MusicKit JS loaded but did not become ready within 20 seconds. Check the '
+      + 'connection to Apple and try again.',
   },
 
   jobs: {
@@ -323,6 +335,10 @@ const en = {
     stopJob: 'Stop',
     stopHint: 'Stopping keeps everything already done; the job can be run again to continue.',
     resultTitle: 'Job result',
+    loadFailed: 'Could not load jobs — {error}',
+    runQueued: 'Queued as job #{id}.',
+    deleted: 'Scheduled task deleted.',
+    queuedAt: 'Queued {when}',
   },
 
   files: {

@@ -45,13 +45,25 @@ PBS_URL="https://github.com/astral-sh/python-build-standalone/releases/download/
 # that duplicate the same libraries: 212 MB where shared costs about half, since
 # ffmpeg and ffprobe then load one copy of each .so. LD_LIBRARY_PATH is already
 # set by start-stop-status, so the cost of shared is one more directory on it.
-FFMPEG_URL="${FFMPEG_URL:-https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n7.1-latest-linux64-lgpl-shared-7.1.tar.xz}"
+#
+# The branch is pinned, not the build: BtbN's `latest` release is rebuilt
+# daily and carries only the release branches upstream still maintains -- two
+# at a time, plus master -- and drops the rest without notice. The dated
+# autobuild-* releases are pruned after a few weeks, so they cannot be pinned
+# either. n7.1 vanished between July and September 2026 and every package
+# build failed at this download until the pin moved (issue #53). When it
+# happens again the failure below lists what BtbN offers that day, so the fix
+# is this line and the matching lines in docs/THIRD-PARTY.md.
+FFMPEG_BRANCH="${FFMPEG_BRANCH:-9.0}"
+FFMPEG_URL="${FFMPEG_URL:-https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n${FFMPEG_BRANCH}-latest-linux64-lgpl-shared-${FFMPEG_BRANCH}.tar.xz}"
 FPCALC_URL="${FPCALC_URL:-https://github.com/acoustid/chromaprint/releases/download/v1.5.1/chromaprint-fpcalc-1.5.1-linux-x86_64.tar.gz}"
 
 info() { printf '\033[1;34m[native]\033[0m %s\n' "$*"; }
 die()  { printf '\033[1;31m[error]\033[0m %s\n' "$*" >&2; exit 1; }
 
-fetch() {
+# Returns non-zero on failure so a caller can add to the message; `fetch`
+# below is the fatal form every plain download uses.
+try_fetch() {
     local url="$1" dest="$2"
     if [ -f "${dest}" ]; then
         info "cached: $(basename "${dest}")"
@@ -60,9 +72,24 @@ fetch() {
     info "downloading $(basename "${dest}") ..."
     mkdir -p "$(dirname "${dest}")"
     # -f so an HTML error page is never mistaken for an archive.
-    curl -fsSL --retry 3 --retry-delay 2 -o "${dest}.part" "${url}" \
-        || die "download failed: ${url}"
+    if ! curl -fsSL --retry 3 --retry-delay 2 -o "${dest}.part" "${url}"; then
+        rm -f "${dest}.part"
+        return 1
+    fi
     mv "${dest}.part" "${dest}"
+}
+
+fetch() {
+    try_fetch "$1" "$2" || die "download failed: $1"
+}
+
+# The linux64 lgpl-shared archives BtbN publishes today, one per line. Best
+# effort: if the API call fails the original 404 is still the message that
+# matters, and this adds nothing rather than obscuring it.
+ffmpeg_on_offer() {
+    curl -fsSL "https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/tags/latest" 2>/dev/null \
+        | grep -o '"name": *"ffmpeg-[^"]*linux64-lgpl-shared[^"]*\.tar\.xz"' \
+        | sed 's/.*"name": *"//; s/"$//' | sort -u
 }
 
 mkdir -p "${STAGE}" "${CACHE}"
@@ -132,7 +159,13 @@ find "${STAGE}/lib" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/
 
 # ---- 3) External tools ----------------------------------------------------
 mkdir -p "${STAGE}/bin"
-fetch "${FFMPEG_URL}" "${CACHE}/ffmpeg-lgpl.tar.xz"
+if ! try_fetch "${FFMPEG_URL}" "${CACHE}/ffmpeg-lgpl.tar.xz"; then
+    offer="$(ffmpeg_on_offer || true)"
+    die "download failed: ${FFMPEG_URL}
+  BtbN's 'latest' release currently offers:
+$(printf '%s\n' "${offer:-(could not list them)}" | sed 's/^/    /')
+  Move FFMPEG_BRANCH (now ${FFMPEG_BRANCH}) to one of those branches, here and in docs/THIRD-PARTY.md."
+fi
 info "extracting ffmpeg and ffprobe ..."
 rm -rf "${CACHE}/ffmpeg-x" && mkdir -p "${CACHE}/ffmpeg-x"
 tar -xJf "${CACHE}/ffmpeg-lgpl.tar.xz" -C "${CACHE}/ffmpeg-x" --strip-components=1

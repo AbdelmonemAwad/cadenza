@@ -4,6 +4,82 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.10.3] - 2026-09-13
+
+The last seven from the feature audit. Four are places where the interface
+showed something other than what the application knew; three are things it
+never showed at all.
+
+### Fixed
+
+- **A scan with an unusable `ffprobe` fails, and says which binary and why.**
+  A missing or non-executable `ffprobe` was answered per file with a result
+  whose `corrupt` flag was False, and the scanner reads that flag alone — so
+  every file was indexed as healthy with no codec, no duration and no
+  bitrate, the scan reported success, and the only trace of the real problem
+  was a string on a dataclass that nothing displayed. A NAS whose bundled
+  `ffprobe` had gone — a package upgrade that failed halfway, a wrong
+  `CADENZA_FFPROBE_BIN` — got a library that looked fine and held none of
+  what a scan exists to find out. `ffprobe -version` is now run once before
+  the walk; if it cannot be, the job fails with the configured path and the
+  reason. If the binary disappears mid-scan, everything indexed so far is
+  kept and the job fails rather than finishing over files it could not look
+  at.
+- **The duplicates header adds up the same set it counts.** It showed the
+  server-wide number of groups next to a saving the browser had summed over
+  the hundred groups on the page, so "340 groups · 2.1 GB" was the count of
+  all of them beside the saving of the first hundred. The endpoint now
+  returns the reclaimable total over every group the filter matches, and the
+  page shows that.
+- **"Started" on the Jobs page is when the job started.** It showed when the
+  job was queued. Behind a long scan a job can wait an hour, and the column
+  then said it had been running the whole time. The queue time is still
+  there, on hover.
+- **Schedule actions say so when they fail.** Enable, disable, run now and
+  delete called the API and reloaded, with no catch: a failure changed
+  nothing on screen and said nothing, so the natural response was to press
+  the button again. Each now reports its error, "Run now" reports the job it
+  queued, and a task whose kind no longer exists answers 400 with the reason
+  instead of a 500. The page's own loading errors are shown too, rather than
+  swallowed into two empty tables.
+- **"Matched tracks" refreshes after a match run.** The figure comes from
+  `/apple/status` and was not re-read afterwards, so the card kept the count
+  from page load while the table beneath it listed the matches that had just
+  been written.
+- **Linking an Apple Music account waits for MusicKit to be ready.** After
+  appending the MusicKit JS script the page waited a fixed 400 ms and then
+  called it. On a slow link the guess lost, `window.MusicKit` was undefined,
+  and linking failed with a message that did not mention the cause. It now
+  waits for MusicKit's own `musickitloaded` event, gives up after twenty
+  seconds with a message that says what did not happen, and does not append
+  the script twice if the button is pressed while the first load is in
+  flight.
+
+### Added
+
+- **Imported playlists are readable.** "Import and match" wrote its result to
+  the database — which local tracks matched, and which entries of the
+  playlist the library does not have, each with its Apple Music link — and
+  nothing read it back; a one-line count was all that reached the user. The
+  Apple Music page now lists every imported playlist with both figures, and
+  opens the entries it could not find so they can be played or added on Apple
+  Music. The import also records the playlist's real name rather than its
+  identifier.
+
+### Changed
+
+- **The package ships FFmpeg 9.0.** The build downloads BtbN's `latest`
+  release, which carries only the release branches upstream still maintains
+  and drops the rest without notice. The 7.1 build the script pinned vanished
+  between July and September, and every package build since failed at the
+  download with a 404 — on `main` as much as anywhere. The pin now names the
+  9.0 branch, the version the test suite was run against on the development
+  machine through all twelve presets, and when the download fails the build
+  lists what BtbN offers that day, so the next rotation is a one-line change
+  rather than a 404 to decode. Verified by CI's build and boot check, not yet
+  on a DS1821+; the shared libraries' glibc requirement is the thing to
+  confirm there.
+
 ## [2.10.2] - 2026-07-28
 
 ### Fixed
