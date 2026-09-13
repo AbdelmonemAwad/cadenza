@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../api/client'
 import FolderPicker from '../components/FolderPicker'
 import { ChangePassword } from './Login'
-import { useI18n } from '../i18n'
+import { useI18n, type TranslationKey } from '../i18n'
 
 type Health = {
   tools: { ffmpeg: boolean; fpcalc: boolean; note: string | null }
@@ -15,6 +15,14 @@ type Health = {
 }
 
 const SECRET_FIELDS = ['acoustid_api_key', 'discogs_token', 'lastfm_api_key'] as const
+
+// What each key buys and where it is issued, said next to the field rather
+// than in a document nobody has open at that moment.
+const PROVIDER_HELP: Record<(typeof SECRET_FIELDS)[number], { text: TranslationKey; url: string }> = {
+  acoustid_api_key: { text: 'settings.providerAcoustid', url: 'https://acoustid.org/new-application' },
+  discogs_token: { text: 'settings.providerDiscogs', url: 'https://www.discogs.com/settings/developers' },
+  lastfm_api_key: { text: 'settings.providerLastfm', url: 'https://www.last.fm/api/account/create' },
+}
 const TEMPLATE_FIELDS = '{albumartist} {artist} {album} {year} {track} {disc} {title} {genre}'
 
 type Credential = { description: string; present: boolean; path: string; size: number }
@@ -304,6 +312,12 @@ export default function Settings() {
                   then wrote that back. Clearing the box now clears the key. */}
               <input type="text" placeholder="••••••••"
                 onChange={(e) => set(key, e.target.value)} />
+              <small className="muted">
+                {t(PROVIDER_HELP[key].text)}{' '}
+                <a href={PROVIDER_HELP[key].url} target="_blank" rel="noreferrer">
+                  {t('settings.getKey')}
+                </a>
+              </small>
             </label>
           ))}
           <label className="field">
@@ -315,6 +329,19 @@ export default function Settings() {
 
         <div className="card">
           <h3>{t('settings.appleTitle')}</h3>
+          <p className="muted">
+            {t('settings.appleGuide')}{' '}
+            <a href="https://developer.apple.com/programs/" target="_blank" rel="noreferrer">
+              {t('settings.appleLinkProgram')}
+            </a>{' · '}
+            <a href="https://developer.apple.com/account" target="_blank" rel="noreferrer">
+              {t('settings.appleLinkTeam')}
+            </a>{' · '}
+            <a href="https://developer.apple.com/account/resources/authkeys/list" target="_blank"
+              rel="noreferrer">
+              {t('settings.appleLinkKeys')}
+            </a>
+          </p>
           <label className="field">
             <span>{t('settings.teamId')}</span>
             <input type="text" value={value('apple_team_id') ?? ''}

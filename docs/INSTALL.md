@@ -412,6 +412,28 @@ nothing reads it.
 Sessions last 14 days. **Sign out everywhere** is available if you think a
 session leaked.
 
+### Linking Apple Music
+
+Apple Music is optional, and it is the one integration with a prerequisite that
+costs money: MusicKit needs an [Apple Developer Program](https://developer.apple.com/programs/)
+membership. With one:
+
+1. **Team ID** — on your [membership page](https://developer.apple.com/account).
+2. **Key ID and the `.p8` file** — create a key under
+   [Keys](https://developer.apple.com/account/resources/authkeys/list) with the
+   *Media Services (MusicKit)* capability, download the `AuthKey_XXXXXXXXXX.p8`
+   once (Apple does not offer it again), and upload it in **Settings → Apple
+   Music**. Cadenza stores it in its own data folder at `0600` and never shows
+   it back.
+3. On the **Apple Music** page, press **Link Apple Music account**. The window
+   that opens is Apple's own: you sign in there, Apple handles two-factor, and
+   Cadenza receives only a token for your library. It never sees your Apple ID
+   password, and there is no email-and-password form because Apple does not
+   allow a third-party application to offer one. The token can be revoked from
+   your Apple account at any time.
+
+If Apple's window closes without linking, see the troubleshooting entry below.
+
 ### Before you expose this to anything
 
 Keep Cadenza on a trusted LAN. It speaks plain HTTP; there is no TLS on either
@@ -513,6 +535,19 @@ a warning that the rewrite failed; browse to the port directly.
 The quarantine folder is on a different volume from the library, so every move
 is a full copy. Keep it under the library (`<library>/.cadenza-quarantine`,
 which is the default) or at least on the same volume.
+
+### Apple's sign-in window closes without linking
+
+The page tells you which step failed. A rejected developer token means the
+Team ID, Key ID and `.p8` do not belong to the same MusicKit key. A window that
+closes with no token is either a cancelled sign-in or a pop-up the browser
+blocked — allow pop-ups for the Cadenza address and try again.
+
+If it keeps happening on a plain `http://` address, serve Cadenza over HTTPS:
+**Control Panel → Login Portal → Advanced → Reverse Proxy → Create**, source
+`HTTPS` on a hostname and port of your choice with a certificate from
+**Security → Certificate**, destination `HTTP` `localhost` port `8760` (or the
+port you chose), then open Cadenza through that address and link from there.
 
 ### Duplicate detection is missing cross-format duplicates
 

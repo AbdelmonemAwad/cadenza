@@ -268,9 +268,21 @@ const ar: Catalogue<typeof en> = {
     title: 'Apple Music',
     subtitle: 'مطابقة المكتبة ومزامنة قوائم التشغيل',
     notConfigured:
-      'Apple Music غير مهيّأ. أدخل Team ID و Key ID في الإعدادات، وضع ملف '
-      + 'AuthKey_XXXXX.p8 في مجلد إعدادات التطبيق على الـ NAS. يتطلب عضوية '
-      + 'Apple Developer Program.',
+      'Apple Music غير مهيّأ. في الإعدادات ← Apple Music أدخل Team ID وKey ID وارفع مفتاح '
+      + 'التوقيع .p8. يتطلب عضوية Apple Developer Program، وصفحة الإعدادات تشرح مصدر كل قيمة.',
+    linkExplainer:
+      'الربط يفتح نافذة تسجيل الدخول الخاصة بـ Apple نفسها. لا ترى Cadenza كلمة مرور Apple ID '
+      + 'أبداً، والتحقق الثنائي تتولاه Apple، وما يعود هو رمز وصول لمكتبتك يمكنك إلغاؤه من حساب '
+      + 'Apple في أي وقت. لا تسمح Apple لأي تطبيق خارجي بتقديم نموذج بريد وكلمة مرور، لذلك لا يوجد.',
+    configureFailed:
+      'رفض MusicKit رمز المطوّر: {error}. تأكد أن Team ID وKey ID وملف .p8 تنتمي إلى مفتاح '
+      + 'MusicKit واحد في حساب المطوّر.',
+    authorizeCancelled:
+      'أُغلقت نافذة Apple دون إعادة رمز: أُلغي تسجيل الدخول، أو منع المتصفح النافذة المنبثقة.',
+    authorizeFailed: 'لم تُكمل Apple تسجيل الدخول: {error}',
+    insecureOriginHint:
+      'هذه الصفحة تُقدَّم عبر HTTP بلا تشفير. إن استمرت نافذة Apple بالإغلاق دون ربط، قدّم '
+      + 'Cadenza عبر HTTPS من خلال Reverse Proxy في DSM وأعد المحاولة؛ دليل التثبيت يشرح الخطوات.',
     configStatus: 'حالة التهيئة',
     ready: 'جاهز',
     incomplete: 'ناقص',
@@ -464,6 +476,18 @@ const ar: Catalogue<typeof en> = {
     removeFile: 'إزالة',
     browse: 'استعراض…',
     storefrontHint: 'رمز المتجر (sa للسعودية، eg لمصر، us لأمريكا …)',
+    getKey: 'الحصول على مفتاح',
+    providerAcoustid:
+      'يتعرّف على التسجيل من الصوت وحده؛ بدونه لا تعمل طبقة التكرار الصوتي. مجاني.',
+    providerDiscogs: 'سنوات الإصدار والإصدارات النادرة أو الإقليمية. رمز شخصي مجاني.',
+    providerLastfm: 'الأنواع الموسيقية وتصحيح أسماء الفنانين. حساب API مجاني.',
+    appleGuide:
+      'تتواصل Cadenza مع Apple Music عبر MusicKit الذي يتطلب عضوية Apple Developer Program. '
+      + 'تجد Team ID في صفحة العضوية، أما Key ID وملف .p8 فمن مفتاح MusicKit تنشئه تحت Keys. '
+      + 'هذه القيم توقّع رمز المطوّر فقط، ولا شيء منها كلمة مرور Apple ID التي لا تطلبها Cadenza أبداً.',
+    appleLinkProgram: 'Developer Program',
+    appleLinkTeam: 'تفاصيل العضوية (Team ID)',
+    appleLinkKeys: 'Keys (إنشاء مفتاح MusicKit)',
   },
 
   jobStrip: {
