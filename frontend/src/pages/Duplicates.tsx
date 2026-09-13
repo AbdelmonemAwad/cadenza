@@ -32,15 +32,20 @@ export default function Duplicates() {
   const { t, n } = useI18n()
   const [groups, setGroups] = useState<Group[]>([])
   const [total, setTotal] = useState(0)
+  const [totalBytes, setTotalBytes] = useState(0)
   const [kind, setKind] = useState('')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<number | null>(null)
 
+  // Both header figures come from the server now. The saving used to be
+  // added up here over the hundred groups on the page while the count beside
+  // it was the server-wide total, so "340 groups · 2.1 GB" showed the saving
+  // of the first hundred next to the number of all of them.
   const load = () => api
-    .get<{ total: number; items: Group[] }>(
+    .get<{ total: number; reclaimable_bytes: number; items: Group[] }>(
       `/duplicates/groups?limit=100${kind ? `&kind=${kind}` : ''}`)
-    .then((r) => { setGroups(r.items); setTotal(r.total) })
+    .then((r) => { setGroups(r.items); setTotal(r.total); setTotalBytes(r.reclaimable_bytes) })
     .catch((e) => setMessage(e.message))
 
   useEffect(() => {
@@ -82,13 +87,11 @@ export default function Duplicates() {
     } catch (e) { setMessage((e as Error).message) }
   }
 
-  const totalReclaim = groups.reduce((a, g) => a + g.reclaimable_bytes, 0)
-
   return (
     <>
       <div className="page-head">
         <h1>{t('duplicates.title')}</h1>
-        <p>{t('duplicates.summary', { groups: total, size: humanBytes(totalReclaim) })}</p>
+        <p>{t('duplicates.summary', { groups: total, size: humanBytes(totalBytes) })}</p>
         <div className="spacer" />
         <button className="btn" disabled={busy} onClick={analyze}>
           {t('duplicates.reanalyze')}

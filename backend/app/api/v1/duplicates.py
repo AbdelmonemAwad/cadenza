@@ -52,13 +52,24 @@ async def groups(kind: str | None = None, resolved: bool = False,
         stmt = stmt.where(DuplicateGroup.kind == kind)
     if min_bytes:
         stmt = stmt.where(DuplicateGroup.reclaimable_bytes >= min_bytes)
-    total = (await s.execute(select(func.count()).select_from(stmt.subquery()))).scalar() or 0
+    matching = stmt.subquery()
+    total = (await s.execute(select(func.count()).select_from(matching))).scalar() or 0
+    # Summed over every group the filter matches, not over the page. The
+    # header read "{total} groups · {size} reclaimable" with `total` from here
+    # and `size` added up in the browser over the hundred groups it had loaded
+    # -- so a library with 340 groups showed 340 next to the saving of the
+    # first 100, and the figure the user planned around was short by however
+    # much the other 240 came to.
+    reclaimable = (await s.execute(
+        select(func.coalesce(func.sum(matching.c.reclaimable_bytes), 0))
+        .select_from(matching))).scalar() or 0
     rows = (await s.execute(
         stmt.order_by(DuplicateGroup.reclaimable_bytes.desc())
         .offset(offset).limit(limit))).scalars().all()
 
     return {
         "total": total,
+        "reclaimable_bytes": int(reclaimable),
         "items": [
             {
                 "id": g.id,

@@ -37,6 +37,13 @@ class ExportRequest(BaseModel):
     track_ids: list[int]
 
 
+class ImportRequest(BaseModel):
+    # The name as MusicKit reports it. The endpoint receives only the id, and
+    # a row called "Apple - p.abc123" is not something a user can recognise
+    # in a list of what they imported.
+    name: str | None = None
+
+
 def _load_user_token() -> str | None:
     path = get_settings().config_dir / USER_TOKEN_FILE
     if not path.is_file():
@@ -206,8 +213,34 @@ async def playlists(s: AsyncSession = Depends(get_session)) -> dict:
     }
 
 
+@router.get("/playlists/imported")
+async def imported_playlists(s: AsyncSession = Depends(get_session)) -> dict:
+    """What "Import and match" produced, for every playlist it has been run on.
+
+    The import wrote its result to a Playlist row -- which local tracks
+    matched, and which entries the library does not have, each with its Apple
+    URL -- and nothing read it back. The page showed a one-line count and the
+    row sat in the database. This is the read side. It needs no provider, so
+    it answers even after the Apple credentials are removed.
+    """
+    rows = (await s.execute(
+        select(Playlist).where(Playlist.source == "apple")
+        .order_by(Playlist.synced_at.desc(), Playlist.id.desc()))).scalars().all()
+    return {
+        "items": [
+            {"id": p.id, "external_id": p.external_id, "name": p.name,
+             "matched": len(p.track_ids or []),
+             "unmatched": len(p.unmatched or []),
+             "unmatched_items": (p.unmatched or [])[:100],
+             "synced_at": p.synced_at}
+            for p in rows
+        ]
+    }
+
+
 @router.post("/playlists/{playlist_id}/import")
 async def import_playlist(playlist_id: str,
+                          req: ImportRequest = Body(default=ImportRequest()),
                           s: AsyncSession = Depends(get_session)) -> dict:
     """Import an Apple playlist and bind its entries to local tracks."""
     provider = _provider(s)
@@ -244,9 +277,11 @@ async def import_playlist(playlist_id: str,
     playlist = (await s.execute(
         select(Playlist).where(Playlist.external_id == playlist_id))).scalar_one_or_none()
     if playlist is None:
-        playlist = Playlist(name=f"Apple - {playlist_id}", source="apple",
+        playlist = Playlist(name=req.name or f"Apple - {playlist_id}", source="apple",
                             external_id=playlist_id)
         s.add(playlist)
+    elif req.name:
+        playlist.name = req.name
     playlist.track_ids = matched_ids
     playlist.unmatched = unmatched
     playlist.synced_at = datetime.now(UTC).replace(tzinfo=None)

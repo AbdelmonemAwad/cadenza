@@ -11,7 +11,10 @@ does: list, filter, drill in, run a job, quarantine something, restore it.
 """
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
+from sqlalchemy import func, select
 
 from app.core.auth import Credentials, hash_password, save_credentials
 from app.db.base import SessionFactory, init_db
@@ -22,7 +25,9 @@ from app.db.models import (
     DuplicateMember,
     Job,
     JobState,
+    Playlist,
     QuarantineItem,
+    ScheduledTask,
     Track,
     TrackStatus,
 )
@@ -52,6 +57,7 @@ READ_ENDPOINTS = [
     "/api/v1/jobs/kinds",
     "/api/v1/jobs/schedule/tasks",
     "/api/v1/apple/status",
+    "/api/v1/apple/playlists/imported",
     "/api/v1/files/roots",
     "/api/v1/files/credentials",
 ]
@@ -292,3 +298,87 @@ async def test_signing_out_really_ends_the_session(populated) -> None:
 
     client.post("/api/v1/auth/login", json={"username": "e2e", "password": _PASSWORD})
     assert client.get("/api/v1/library/tracks").status_code == 200
+
+
+async def test_the_reclaimable_figure_covers_every_group_not_just_the_page(populated) -> None:
+    """The header showed the server-wide group count next to a saving that the
+    browser had summed over the one page it had loaded. Both figures come from
+    the endpoint now, over the same filter."""
+    client, _ = populated
+    async with SessionFactory() as s:
+        s.add_all([
+            DuplicateGroup(kind="exact_file", signature="sig-page-2", confidence=1.0,
+                           member_count=2, reclaimable_bytes=1_000),
+            DuplicateGroup(kind="exact_file", signature="sig-page-3", confidence=1.0,
+                           member_count=2, reclaimable_bytes=2_000),
+        ])
+        await s.commit()
+        expected = (await s.execute(
+            select(func.sum(DuplicateGroup.reclaimable_bytes))
+            .where(DuplicateGroup.resolved == False))).scalar()  # noqa: E712
+
+    page = client.get("/api/v1/duplicates/groups", params={"limit": 1}).json()
+    assert len(page["items"]) == 1
+    assert page["total"] >= 3
+    assert page["reclaimable_bytes"] == expected, \
+        "the saving was summed over the page, not over every matching group"
+
+
+async def test_imported_playlists_can_be_read_back(populated) -> None:
+    """"Import and match" wrote its result to a Playlist row that nothing read:
+    the page showed a one-line count and the row sat in the database. The
+    read side needs no Apple credentials, and this test runs without any."""
+    client, ids = populated
+    async with SessionFactory() as s:
+        s.add(Playlist(name="Road trip", source="apple", external_id="p.test",
+                       track_ids=[ids["a"], ids["b"]],
+                       unmatched=[{"title": "Missing Song", "artist": "Nobody",
+                                   "apple_id": "1", "url": "https://music.apple.com/x"}],
+                       synced_at=datetime.now(UTC).replace(tzinfo=None)))
+        await s.commit()
+
+    listing = client.get("/api/v1/apple/playlists/imported")
+    assert listing.status_code == 200, listing.text
+    row = next(p for p in listing.json()["items"] if p["external_id"] == "p.test")
+    assert row["name"] == "Road trip"
+    assert row["matched"] == 2 and row["unmatched"] == 1
+    assert row["unmatched_items"][0]["url"] == "https://music.apple.com/x"
+
+
+async def test_running_a_task_whose_kind_is_gone_says_so(populated) -> None:
+    """Unhandled, this was a 500 -- and the button that caused it showed
+    nothing at all, so the natural response was to press it again."""
+    client, _ = populated
+    async with SessionFactory() as s:
+        task = ScheduledTask(name="stale kind", job_kind="no-such-kind",
+                             cron="0 3 * * *", params={}, enabled=False)
+        s.add(task)
+        await s.flush()
+        task_id = task.id
+        await s.commit()
+
+    response = client.post(f"/api/v1/jobs/schedule/tasks/{task_id}/run")
+    assert response.status_code == 400, response.text
+    assert "no-such-kind" in response.json()["detail"]
+
+
+async def test_a_job_reports_when_it_started_separately_from_when_it_was_queued(
+        populated) -> None:
+    """The Jobs page showed `created_at` under "Started". Behind a long scan a
+    job can wait an hour, and the column then said it had been running the
+    whole time. The two are distinct in the API and must stay so."""
+    client, _ = populated
+    queued = datetime(2026, 1, 1, 10, 0, 0)
+    async with SessionFactory() as s:
+        job = Job(kind="scan", state=JobState.DONE, total=1, processed=1,
+                  created_at=queued, started_at=queued + timedelta(hours=1),
+                  finished_at=queued + timedelta(hours=2))
+        s.add(job)
+        await s.flush()
+        job_id = job.id
+        await s.commit()
+
+    shown = client.get(f"/api/v1/jobs/{job_id}").json()
+    assert shown["created_at"].startswith("2026-01-01T10:00")
+    assert shown["started_at"].startswith("2026-01-01T11:00")
+    assert shown["started_at"] != shown["created_at"]

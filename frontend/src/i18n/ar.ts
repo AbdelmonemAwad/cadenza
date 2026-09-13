@@ -289,6 +289,18 @@ const ar: Catalogue<typeof en> = {
     colDescription: 'الوصف',
     importAndMatch: 'استيراد ومطابقة',
     importResult: 'استُوردت القائمة: {matched} مسار مطابق، {unmatched} غير موجود محلياً.',
+    importedTitle: 'القوائم المستوردة',
+    noImports: 'لم تُستورد أي قائمة بعد.',
+    colMatched: 'في مكتبتك',
+    colUnmatched: 'ليست في مكتبتك',
+    colImported: 'تاريخ الاستيراد',
+    unmatchedHint:
+      'هذه المسارات لا يوجد لها مطابق في مكتبتك. افتح أيّاً منها للاستماع إليه أو '
+      + 'إضافته عبر Apple Music.',
+    musickitLoadFailed: 'تعذّر تحميل MusicKit JS من js-cdn.music.apple.com.',
+    musickitTimeout:
+      'حُمّل MusicKit JS لكنه لم يصبح جاهزاً خلال 20 ثانية. تحقق من الاتصال بـ Apple '
+      + 'وحاول مجدداً.',
   },
 
   jobs: {
@@ -323,6 +335,10 @@ const ar: Catalogue<typeof en> = {
     stopJob: 'إيقاف',
     stopHint: 'الإيقاف يحتفظ بكل ما أُنجز، ويمكن تشغيل المهمة مجدداً لتُكمل من حيث توقفت.',
     resultTitle: 'نتيجة المهمة',
+    loadFailed: 'تعذّر تحميل المهام — {error}',
+    runQueued: 'أُضيفت إلى الطابور كمهمة رقم {id}.',
+    deleted: 'حُذفت المهمة المجدولة.',
+    queuedAt: 'أُدرجت في الطابور {when}',
   },
 
   files: {

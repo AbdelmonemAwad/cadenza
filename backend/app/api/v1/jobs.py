@@ -157,7 +157,13 @@ async def run_now(task_id: int, s: AsyncSession = Depends(get_session)) -> dict:
     task = await s.get(ScheduledTask, task_id)
     if task is None:
         raise HTTPException(404, "scheduled task not found")
-    job_id = await runner.submit(task.job_kind, dict(task.params or {}))
+    try:
+        job_id = await runner.submit(task.job_kind, dict(task.params or {}))
+    except ValueError as exc:
+        # A task saved for a kind that no longer exists. Unhandled, this was a
+        # 500 with a stack trace in the log -- and the button that caused it
+        # showed nothing, so the user pressed it again.
+        raise HTTPException(400, str(exc)) from exc
     return {"job_id": job_id}
 
 
