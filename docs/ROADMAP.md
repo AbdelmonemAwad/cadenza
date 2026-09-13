@@ -99,8 +99,9 @@ root is the single source of truth and every change that ships bumps it.
 
 ### The rest of the audit — 2.10.1 to 2.10.3
 
-Verified by the test suite and CI's package build. The hardware pass over
-these is listed under **In progress**.
+Verified by the test suite and CI's package build, and 2.10.3 was exercised
+on a DS1821+ running DSM 7.2 on 2026-09-13 — see **In progress** for what
+that pass covered and what it turned up.
 
 - Discogs can reject a release again: its relevance check compared the
   searched title against itself and scored every release 1.0.
@@ -128,10 +129,25 @@ and the application disagreed, then the wrong numbers. The ten that were
 listed here after that shipped in 2.10.1 and 2.10.3, and a further one found
 in the meantime in 2.10.2. Nothing from the audit is outstanding.
 
-What is open is the gate at the top of this file. 2.10.3 was verified by the
-test suite and the package build in CI, not on a DS1821+; a pass over the
-2.10.x changes on real hardware is the next step, and until it happens they
-stand in **Done** on the strength of CI alone.
+2.10.3 was installed on a DS1821+ running DSM 7.2 on 2026-09-13, over a
+4,025-track library, and exercised there: the package upgraded in place with
+the database and the account intact; a scan passed the new `ffprobe`
+preflight, which settles whether the FFmpeg 9.0 build's shared libraries load
+on DSM; the duplicates header agreed with the dashboard over 1,324 groups;
+the Jobs page showed real start times and reported the job it queued; the
+Apple Music page rendered its new section; and the application log carried
+no error or warning after the upgrade.
+
+Open from that pass:
+
+- **#54** — duplicate analysis can end with its progress shown as `20000/4`.
+  The engine reports on two scales and the updates it schedules from its
+  worker thread race each other, so a row can keep one column from one update
+  and the other column from another.
+- **DVA3221** — the package has not yet been made to run on the second
+  machine it was built for. It is the same `x86_64` architecture with DSM 7.2
+  available, so the same `.spk` is expected to install; what actually happens
+  there is not yet recorded.
 
 ---
 
