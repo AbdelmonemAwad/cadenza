@@ -168,6 +168,15 @@ class DeduplicationEngine:
         self.decider = DecisionEngine()
 
     def _emit(self, stage: str, done: int, total: int) -> None:
+        """Report progress on one scale: `done` out of 100, whatever the stage.
+
+        It used to switch scales mid-run -- stage numbers out of 4, then
+        acoustic block counts out of however many blocks there were -- and the
+        two were written to the same pair of columns by updates that could
+        land in any order. A job finished reading `20000/4` (issue #54). The
+        stage is still named in the message; the numbers no longer depend on
+        which stage wrote last.
+        """
         if self.progress:
             try:
                 self.progress(stage, done, total)
@@ -245,7 +254,10 @@ class DeduplicationEngine:
         total_blocks = len(blocks)
         for idx, members in enumerate(blocks.values()):
             if idx % 200 == 0:
-                self._emit("acoustic", idx, total_blocks)
+                # The acoustic stage owns 40..80 of the scale; the block count
+                # goes in the message, where a number needs no unit guessed.
+                self._emit(f"acoustic: block {idx} of {total_blocks}",
+                           40 + (40 * idx) // max(1, total_blocks), 100)
             if len(members) < 2 or len(members) > 400:
                 # An oversized bucket means a badly distributed band; skipping
                 # it is cheaper than an O(n^2) sweep, and other bands still
@@ -268,7 +280,7 @@ class DeduplicationEngine:
 
         for root, ids in uf.groups().items():
             clusters.append(Cluster(DupKind.ACOUSTIC, f"fpgroup:{root}", 0.92, sorted(ids)))
-        self._emit("acoustic", total_blocks, total_blocks)
+        self._emit(f"acoustic: {total_blocks} blocks compared", 80, 100)
         return clusters, comparisons
 
     # ---------------- Layer 4: textual match ----------------
@@ -339,30 +351,32 @@ class DeduplicationEngine:
         report = DedupReport(scanned=len(tracks))
         taken: set[int] = set()
 
-        self._emit("exact_file", 0, 4)
+        self._emit("exact_file", 0, 100)
         for c in self.find_exact_file(tracks):
             report.clusters.append(c)
             taken.update(c.track_ids)
 
-        self._emit("exact_audio", 1, 4)
+        self._emit("exact_audio", 20, 100)
         for c in self.find_exact_audio(tracks, taken):
             report.clusters.append(c)
             taken.update(c.track_ids)
 
         if use_acoustic if use_acoustic is not None else self.s.acoustic_enabled:
-            self._emit("acoustic", 2, 4)
+            self._emit("acoustic", 40, 100)
             acoustic, comparisons = await asyncio.to_thread(self.find_acoustic, tracks, taken)
             report.comparisons += comparisons
             for c in acoustic:
                 report.clusters.append(c)
                 taken.update(c.track_ids)
 
-        self._emit("metadata", 3, 4)
+        self._emit("metadata", 80, 100)
         for c in await asyncio.to_thread(self.find_metadata, tracks, taken):
             report.clusters.append(c)
             taken.update(c.track_ids)
 
-        self._emit("persist", 4, 4)
+        # 90, not 100: persisting is real work, and the caller says "done"
+        # once it has actually finished.
+        self._emit("persist", 90, 100)
         await self._persist(report, by_id)
         return report
 

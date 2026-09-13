@@ -4,6 +4,29 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.10.5] - 2026-09-13
+
+### Fixed
+
+- **Duplicate analysis ends with the progress it finished at.** A run on a
+  real library finished `done` with the Jobs page showing `20000/4`, and kept
+  showing it. The engine reported on two scales — stage numbers out of four,
+  then acoustic block counts out of twenty thousand — and the handler
+  scheduled each report as its own coroutine from the worker thread and
+  awaited none of them. Two were in flight at once; each had loaded the row,
+  each changed the attribute it cared about, and SQLAlchemy wrote only what
+  changed: one landed `processed`, the other `total`, and nothing wrote the
+  pair again.
+
+  Three changes. Progress is written as a pair in one statement, so no two
+  reports can each land half of it. Reports made from the engine's thread go
+  through one queue drained in order on the loop — a report that arrives
+  while an earlier one is being written replaces the ones waiting behind it,
+  so the hot loop never queues hundreds of stale updates — and the handler
+  writes `100/100 done` after the last of them. And the engine reports on one
+  scale, out of 100, with the stage and the block count in the message where
+  a number needs no unit guessed.
+
 ## [2.10.4] - 2026-09-13
 
 ### Fixed

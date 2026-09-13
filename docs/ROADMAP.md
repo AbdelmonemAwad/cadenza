@@ -130,6 +130,12 @@ that pass covered and what it turned up.
 - The quarantine folder is created by the first move into it, and nothing
   creates directories at import any more.
 
+### Progress that ends where the job did — 2.10.5
+
+- Duplicate analysis no longer finishes showing `20000/4`. Progress is written
+  as a pair in one statement, reports from the engine's thread are applied in
+  order with a final `100/100`, and the engine reports on one scale.
+
 ---
 
 ## In progress
@@ -153,10 +159,7 @@ no error or warning after the upgrade.
 
 Open from that pass:
 
-- **#54** — duplicate analysis can end with its progress shown as `20000/4`.
-  The engine reports on two scales and the updates it schedules from its
-  worker thread race each other, so a row can keep one column from one update
-  and the other column from another.
+- **#54** — shipped in 2.10.5; see **Done**.
 - **DVA3221** — now running 2.10.3 (DSM 7.2.1, Atom C3538): the only thing
   wrong was a share permission, which 2.10.4 turns from a silent crash into a
   banner. A full first scan there took 6 minutes 37 seconds for 3,801 files,

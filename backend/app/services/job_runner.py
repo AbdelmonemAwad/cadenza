@@ -10,7 +10,7 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.config import get_settings
 from app.core import fingerprint, hashing
@@ -196,12 +196,18 @@ class JobRunner:
 
     async def progress(self, job_id: int, processed: int, total: int,
                        message: str | None = None) -> None:
+        # One statement that sets both columns. Loading the row and assigning
+        # the attributes let SQLAlchemy write only what had changed, so two
+        # reports in flight at once -- a worker thread's last block count and
+        # the stage after it -- could each land one column, and a job ended
+        # reading 20000/4 for ever (issue #54). Whole pairs can still arrive
+        # out of order; that is the caller's to serialise, and
+        # handle_dedup_analyze does.
+        values: dict = {"processed": processed, "total": total}
+        if message:
+            values["message"] = message[:500]
         async with session_scope() as s:
-            job = await s.get(Job, job_id)
-            if job:
-                job.processed, job.total = processed, total
-                if message:
-                    job.message = message[:500]
+            await s.execute(update(Job).where(Job.id == job_id).values(**values))
         await self.broadcast({"type": "job.progress", "job_id": job_id,
                               "processed": processed, "total": total,
                               "message": message})
@@ -411,22 +417,72 @@ async def handle_fingerprint(job_id: int, params: dict, dry_run: bool,
             "stopped": done < total}
 
 
+class ProgressRelay:
+    """Applies progress reports in the order they were made, from any thread.
+
+    `run_coroutine_threadsafe` scheduled each report as its own coroutine and
+    awaited none of them, so they ran concurrently and committed in whatever
+    order the database let them: the last write was not the last report, and
+    a duplicate analysis could finish showing a block count from its middle
+    (issue #54). One task on the loop drains a queue instead, so writes happen
+    in order; a report that arrives while an earlier one is still being
+    written replaces the ones waiting behind it, so a hot loop never queues
+    hundreds of updates that are all stale by the time they land.
+    """
+
+    def __init__(self, runner: JobRunner, job_id: int,
+                 loop: asyncio.AbstractEventLoop) -> None:
+        self._runner = runner
+        self._job_id = job_id
+        self._loop = loop
+        self._queue: asyncio.Queue[tuple[str, int, int] | None] = asyncio.Queue()
+        self._task = loop.create_task(self._drain())
+
+    def report(self, stage: str, done: int, total: int) -> None:
+        """Safe from a worker thread and from the loop's own thread alike."""
+        self._loop.call_soon_threadsafe(self._queue.put_nowait, (stage, done, total))
+
+    async def _drain(self) -> None:
+        while True:
+            item = await self._queue.get()
+            if item is None:
+                return
+            closing = False
+            while not self._queue.empty():
+                nxt = self._queue.get_nowait()
+                if nxt is None:
+                    closing = True
+                    break
+                item = nxt
+            try:
+                await self._runner.progress(self._job_id, item[1], item[2], item[0])
+            except Exception:       # progress reporting must never fail the job
+                log.debug("progress write failed", exc_info=True)
+            if closing:
+                return
+
+    async def close(self) -> None:
+        """Wait for every report made so far to be written."""
+        self._queue.put_nowait(None)
+        await self._task
+
+
 async def handle_dedup_analyze(job_id: int, params: dict, dry_run: bool,
                                runner: JobRunner) -> dict:
-    loop = asyncio.get_running_loop()
-
-    def progress(stage: str, done: int, total: int) -> None:
-        # The engine's hot loop runs in a worker thread, so hop back to the loop.
-        asyncio.run_coroutine_threadsafe(runner.progress(job_id, done, total, stage), loop)
-
+    relay = ProgressRelay(runner, job_id, asyncio.get_running_loop())
     scope = (str(contained(params["path"], get_settings().music_root))
              if params.get("path") else None)
-    async with session_scope() as s:
-        report = await DeduplicationEngine(s, progress).analyze(
-            scope_prefix=scope,
-            use_acoustic=params.get("acoustic"),
-        )
-        summary = await build_dry_run_report(s, limit=params.get("limit", 500))
+    try:
+        async with session_scope() as s:
+            report = await DeduplicationEngine(s, relay.report).analyze(
+                scope_prefix=scope,
+                use_acoustic=params.get("acoustic"),
+            )
+            summary = await build_dry_run_report(s, limit=params.get("limit", 500))
+    finally:
+        await relay.close()
+    # Written after every relayed report, so the row ends where the job did.
+    await runner.progress(job_id, 100, 100, "done")
 
     summary["engine"] = {
         "scanned": report.scanned,
