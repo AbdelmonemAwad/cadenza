@@ -66,6 +66,20 @@ never showed at all.
   Music. The import also records the playlist's real name rather than its
   identifier.
 
+### Changed
+
+- **The package ships FFmpeg 9.0.** The build downloads BtbN's `latest`
+  release, which carries only the release branches upstream still maintains
+  and drops the rest without notice. The 7.1 build the script pinned vanished
+  between July and September, and every package build since failed at the
+  download with a 404 — on `main` as much as anywhere. The pin now names the
+  9.0 branch, the version the test suite was run against on the development
+  machine through all twelve presets, and when the download fails the build
+  lists what BtbN offers that day, so the next rotation is a one-line change
+  rather than a 404 to decode. Verified by CI's build and boot check, not yet
+  on a DS1821+; the shared libraries' glibc requirement is the thing to
+  confirm there.
+
 ## [2.10.2] - 2026-07-28
 
 ### Fixed

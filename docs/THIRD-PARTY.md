@@ -40,8 +40,8 @@ they are the ones that constrain how Cadenza may be distributed.
 | Component | Version | Licence | Copyleft | Used as |
 | --- | --- | --- | --- | --- |
 | mutagen | 1.47.0 | GPL-2.0-or-later | strong | **imported** |
-| ffmpeg | n7.1 (BtbN, linux64 lgpl-shared) | LGPL-3.0-or-later | weak | subprocess |
-| ffprobe | n7.1 (BtbN, linux64 lgpl-shared) | LGPL-3.0-or-later | weak | subprocess |
+| ffmpeg | n9.0 (BtbN, linux64 lgpl-shared) | LGPL-3.0-or-later | weak | subprocess |
+| ffprobe | n9.0 (BtbN, linux64 lgpl-shared) | LGPL-3.0-or-later | weak | subprocess |
 | fpcalc | 1.5.1 (chromaprint, linux-x86_64) | LGPL-2.1-only | weak | subprocess |
 | certifi | 2026.7.22 | MPL-2.0 | file-level | transitive |
 
@@ -72,16 +72,22 @@ The pin was deleted. Arabic and Latin normalisation is done by
 `backend/app/core/dedup.py` without it. A comment in `requirements.txt` records
 why it is absent, so it is not innocently added back.
 
-### ffmpeg and ffprobe n7.1 — LGPL-3.0-or-later, subprocess
+### ffmpeg and ffprobe n9.0 — LGPL-3.0-or-later, subprocess
 
 Downloaded by `packaging/synology/build-native-payload.sh` from BtbN's
-`ffmpeg-n7.1-latest-linux64-lgpl-shared-7.1.tar.xz`. The binaries land in
+`ffmpeg-n9.0-latest-linux64-lgpl-shared-9.0.tar.xz`. The binaries land in
 `STAGE/bin/`, the shared `libav*` objects in `STAGE/ffmpeg-lib/`.
+
+The branch is what is pinned (`FFMPEG_BRANCH` in that script), because BtbN's
+`latest` release carries only the release branches upstream still maintains and
+drops the rest without notice: the 7.1 build vanished in 2026 and every package
+build failed at the download until the pin moved. When the branch moves, the
+three mentions above move with it.
 
 Both are invoked only through `subprocess.run()`:
 
-- `ffprobe` — `backend/app/core/audio_probe.py:43`
-- `ffmpeg` — `backend/app/core/audio_probe.py:106`, plus transcode paths
+- `ffprobe` — `backend/app/core/audio_probe.py:61` (the preflight) and `:89`
+- `ffmpeg` — `backend/app/core/audio_probe.py:154`, plus transcode paths
 
 **The version is LGPL 3, not LGPL 2.1.** BtbN's `lgpl-shared` variant resolves
 through `variants/linux64-lgpl-shared.sh` → `defaults-lgpl-shared.sh` →
