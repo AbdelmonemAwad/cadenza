@@ -76,9 +76,9 @@ never showed at all.
   9.0 branch, the version the test suite was run against on the development
   machine through all twelve presets, and when the download fails the build
   lists what BtbN offers that day, so the next rotation is a one-line change
-  rather than a 404 to decode. Verified by CI's build and boot check, not yet
-  on a DS1821+; the shared libraries' glibc requirement is the thing to
-  confirm there.
+  rather than a 404 to decode. Verified by CI's build and boot check, and on
+  a DS1821+ running DSM 7.2: the package upgraded in place and a scan passed
+  the `ffprobe` preflight, so the 9.0 build's shared libraries load there.
 
 ## [2.10.2] - 2026-07-28
 
