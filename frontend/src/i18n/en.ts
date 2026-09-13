@@ -269,9 +269,25 @@ const en = {
     title: 'Apple Music',
     subtitle: 'Library matching and playlist sync',
     notConfigured:
-      'Apple Music is not configured. Enter your Team ID and Key ID in Settings, and place '
-      + 'the AuthKey_XXXXX.p8 file in the app config folder on the NAS. Requires an Apple '
-      + 'Developer Program membership.',
+      'Apple Music is not configured. In Settings → Apple Music, enter your Team ID and '
+      + 'Key ID and upload the .p8 signing key. This needs an Apple Developer Program '
+      + 'membership; the Settings page says where each value comes from.',
+    linkExplainer:
+      "Linking opens Apple's own sign-in window. Cadenza never sees your Apple ID password, "
+      + 'two-factor is handled by Apple, and what comes back is a token for your library that '
+      + 'you can revoke from your Apple account at any time. Apple does not allow a '
+      + 'third-party app to offer an email-and-password form, so there is none.',
+    configureFailed:
+      'MusicKit rejected the developer token: {error}. Check that Team ID, Key ID and the '
+      + '.p8 file belong to the same MusicKit key in your developer account.',
+    authorizeCancelled:
+      "Apple's window closed without returning a token: the sign-in was cancelled, or the "
+      + 'pop-up was blocked by the browser.',
+    authorizeFailed: 'Apple did not complete the sign-in: {error}',
+    insecureOriginHint:
+      "This page is served over plain HTTP. If Apple's window keeps closing without linking, "
+      + "serve Cadenza over HTTPS through DSM's reverse proxy and try again; the install guide "
+      + 'has the steps.',
     configStatus: 'Configuration',
     ready: 'Ready',
     incomplete: 'Incomplete',
@@ -465,6 +481,20 @@ const en = {
     removeFile: 'Remove',
     browse: 'Browse…',
     storefrontHint: 'Storefront code (us, gb, sa, eg, …)',
+    getKey: 'Get a key',
+    providerAcoustid:
+      'Identifies a recording from its audio alone; without it the acoustic duplicate layer '
+      + 'cannot run. Free.',
+    providerDiscogs: 'Pressing years and rare or regional releases. Free personal token.',
+    providerLastfm: 'Genres and corrections to misspelled artist names. Free API account.',
+    appleGuide:
+      'Cadenza talks to Apple Music through MusicKit, which needs an Apple Developer Program '
+      + 'membership. The Team ID is on your membership page; the Key ID and the .p8 file come '
+      + 'from a MusicKit key you create under Keys. These only sign the developer token — none '
+      + 'of them is your Apple ID password, which Cadenza never asks for.',
+    appleLinkProgram: 'Developer Program',
+    appleLinkTeam: 'Membership details (Team ID)',
+    appleLinkKeys: 'Keys (create a MusicKit key)',
   },
 
   jobStrip: {

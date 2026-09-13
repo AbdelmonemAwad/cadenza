@@ -66,6 +66,9 @@ function loadMusicKit(messages: { timeout: string; failed: string }): Promise<vo
   return musicKitLoading
 }
 
+const errorText = (e: unknown): string =>
+  e instanceof Error ? e.message : (typeof e === 'string' ? e : JSON.stringify(e))
+
 export default function AppleMusic() {
   const { t, n, d } = useI18n()
   const [status, setStatus] = useState<Status | null>(null)
@@ -84,7 +87,14 @@ export default function AppleMusic() {
   useEffect(() => { load(); loadImported() }, [])
 
   /** Links the account through MusicKit JS: Apple's own sign-in window handles
-      the credentials, and we only ever receive the resulting user token. */
+      the credentials, and we only ever receive the resulting user token.
+      There is no other way in -- Apple does not let a third-party application
+      take the Apple ID password -- so the page explains that above the button
+      rather than leaving the user to wonder why there is no form.
+
+      Each step that can fail says which one did. Before, every failure came
+      out as whatever text the exception happened to carry, which for a
+      cancelled sign-in was nothing at all. */
   const linkAccount = async () => {
     setBusy(true); setMessage(null)
     try {
@@ -92,16 +102,33 @@ export default function AppleMusic() {
       await loadMusicKit({
         timeout: t('apple.musickitTimeout'), failed: t('apple.musickitLoadFailed'),
       })
-      await window.MusicKit.configure({
-        developerToken: token,
-        app: { name: 'Cadenza', build: '1.0.0' },
-      })
-      const userToken = await window.MusicKit.getInstance().authorize()
+      try {
+        await window.MusicKit.configure({
+          developerToken: token,
+          app: { name: 'Cadenza', build: '1.0.0' },
+        })
+      } catch (e) {
+        throw new Error(t('apple.configureFailed', { error: errorText(e) }))
+      }
+      let userToken: string | undefined
+      try {
+        userToken = await window.MusicKit.getInstance().authorize()
+      } catch (e) {
+        // The interface is usually served over plain HTTP on the NAS. If
+        // Apple's window will not hand the token back to such an origin, the
+        // fix is HTTPS through DSM's reverse proxy, and the message says so.
+        const hint = location.protocol === 'https:' ? '' : ` ${t('apple.insecureOriginHint')}`
+        throw new Error(t('apple.authorizeFailed', { error: errorText(e) }) + hint)
+      }
+      if (!userToken) {
+        const hint = location.protocol === 'https:' ? '' : ` ${t('apple.insecureOriginHint')}`
+        throw new Error(t('apple.authorizeCancelled') + hint)
+      }
       await api.post('/apple/link', { music_user_token: userToken })
       setMessage(t('apple.linkSuccess'))
       load()
     } catch (e) {
-      setMessage((e as Error).message)
+      setMessage(errorText(e))
     } finally { setBusy(false) }
   }
 
@@ -114,7 +141,7 @@ export default function AppleMusic() {
       // so the card kept the count from page load while the table below it
       // showed the matches that had just been written.
       load()
-    } catch (e) { setMessage((e as Error).message) } finally { setBusy(false) }
+    } catch (e) { setMessage(errorText(e)) } finally { setBusy(false) }
   }
 
   const loadPlaylists = async () => {
@@ -122,7 +149,7 @@ export default function AppleMusic() {
     try {
       const r = await api.get<{ items: Playlist[] }>('/apple/playlists')
       setPlaylists(r.items)
-    } catch (e) { setMessage((e as Error).message) } finally { setBusy(false) }
+    } catch (e) { setMessage(errorText(e)) } finally { setBusy(false) }
   }
 
   const importPlaylist = async (p: Playlist) => {
@@ -132,7 +159,7 @@ export default function AppleMusic() {
         `/apple/playlists/${p.id}/import`, { name: p.name })
       setMessage(t('apple.importResult', { matched: r.matched, unmatched: r.unmatched }))
       loadImported()
-    } catch (e) { setMessage((e as Error).message) } finally { setBusy(false) }
+    } catch (e) { setMessage(errorText(e)) } finally { setBusy(false) }
   }
 
   return (
@@ -163,6 +190,7 @@ export default function AppleMusic() {
           <div className={`stat-value ${status?.user_linked ? 'ok' : ''}`}>
             {status?.user_linked ? t('apple.linked') : t('apple.notLinked')}
           </div>
+          <p className="muted" style={{ marginTop: 8 }}>{t('apple.linkExplainer')}</p>
           <button className="btn primary sm" style={{ marginTop: 8 }}
             disabled={busy || !status?.configured} onClick={linkAccount}>
             {status?.user_linked ? t('apple.relink') : t('apple.linkAccount')}

@@ -4,6 +4,38 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.10.6] - 2026-09-13
+
+### Added
+
+- **Every integration explains itself where it is set up.** The Apple Music
+  card in Settings says what MusicKit needs and why — a Developer Program
+  membership, the Team ID from the membership page, a Key ID and `.p8` file
+  from a MusicKit key you create under Keys — and links to each page. The
+  three provider keys say what each source contributes and link to where the
+  key is issued. This is the "integration setup guidance" the roadmap had
+  planned.
+- **Linking Apple Music is explained before the button is pressed.** The
+  window that opens is Apple's own: Cadenza never sees the Apple ID password,
+  two-factor is handled by Apple, and what comes back is a token for the
+  library that can be revoked from the Apple account at any time. An
+  email-and-password form is not something Apple allows a third-party
+  application to offer, and the page says so instead of leaving the user to
+  wonder why there is none.
+
+### Fixed
+
+- **Linking says which step failed.** A rejected developer token, a sign-in
+  window closed without a token, a pop-up blocked by the browser and a token
+  the server would not store each have their own message. Before, a
+  cancelled sign-in produced an empty banner. When the page is served over
+  plain HTTP — which on the NAS it usually is — a failure at Apple's window
+  also says that HTTPS through DSM's reverse proxy is the thing to try, and
+  the install guide has the steps.
+- The "not configured" notice on the Apple Music page no longer tells you to
+  copy the `.p8` file into a folder on the NAS by hand; the key has been
+  uploaded from Settings since 2.4.0.
+
 ## [2.10.5] - 2026-09-13
 
 ### Fixed

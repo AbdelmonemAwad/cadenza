@@ -136,6 +136,18 @@ that pass covered and what it turned up.
   as a pair in one statement, reports from the engine's thread are applied in
   order with a final `100/100`, and the engine reports on one scale.
 
+### Integrations explained where they are set up — 2.10.6
+
+- Each provider key says what the source contributes and links to where the
+  key is issued. The Apple Music card explains the Developer Program, the Team
+  ID, the MusicKit key and the `.p8` upload, with links.
+- Linking Apple Music is explained before the button: Apple's own window, no
+  password ever seen by Cadenza, a revocable token. Each step that can fail
+  names itself, and a failure at Apple's window on a plain-HTTP address points
+  at HTTPS through DSM's reverse proxy, which the install guide walks through.
+- Still to confirm on hardware: whether Apple's window hands the token back to
+  a plain `http://` origin at all. That needs a Developer Program account.
+
 ---
 
 ## In progress
@@ -175,12 +187,6 @@ Add and remove library paths from Settings rather than setting one at install
 time. Every containment check, the scanner, the organizer and the quarantine
 mirror assume a single root today, so this is a real change rather than a new
 field — and it needs the schema migrations that 2.2.0 introduced.
-
-### Integration setup guidance
-
-Each provider explained in place: what it gives you, where to get the key, and
-a link that goes there. AcoustID and Last.fm need the key in the query string,
-so the log redaction that already exists matters here too.
 
 ---
 
