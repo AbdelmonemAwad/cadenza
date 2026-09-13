@@ -18,18 +18,33 @@ type Stats = {
   duplicates: { groups: number; files: number; reclaimable_bytes: number }
   quarantine: { items: number; bytes: number }
 }
+type Health = {
+  paths: { music_root: { path: string; exists: boolean; readable: boolean } }
+}
 
 export default function Dashboard() {
   const { t, n } = useI18n()
   const [stats, setStats] = useState<Stats | null>(null)
+  const [library, setLibrary] = useState<Health['paths']['music_root'] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   // Cleared on success, or a single failed poll leaves the banner up for ever
   // while the page behind it is perfectly current.
-  const load = () => api.get<Stats>('/dashboard/stats')
-    .then((r) => { setStats(r); setError(null) })
-    .catch((e) => setError(e.message))
+  const load = () => {
+    api.get<Stats>('/dashboard/stats')
+      .then((r) => { setStats(r); setError(null) })
+      .catch((e) => setError(e.message))
+    // Whether the service account can read the library at all. On a fresh
+    // Synology install this is the one step only the user can do, and until
+    // now the only place that said so was the package log: the process
+    // crashed before this page could load, and Package Center said
+    // "start_failed" with no reason. The package starts now, so this can be
+    // said where the user is looking.
+    api.get<Health>('/settings/health')
+      .then((h) => setLibrary(h.paths.music_root))
+      .catch(() => { /* the stats error banner already covers a dead API */ })
+  }
 
   useEffect(() => {
     load()
@@ -66,6 +81,12 @@ export default function Dashboard() {
 
   return (
     <>
+      {library && !library.readable && (
+        <div className="banner danger">
+          {t('dashboard.libraryUnreadable', { path: library.path })}{' '}
+          {t('dashboard.libraryUnreadableSteps')}
+        </div>
+      )}
       {error && (
         <div className="banner danger">{t('dashboard.statsError', { error })}</div>
       )}

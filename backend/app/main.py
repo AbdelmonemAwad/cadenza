@@ -23,8 +23,10 @@ log = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     s = get_settings()
-    setup_logging(s.log_level, s.config_dir / "logs" / "cadenza.log")
+    # Directories first: the log file below lives in one of them, and nothing
+    # creates them at import any more.
     s.ensure_dirs()
+    setup_logging(s.log_level, s.config_dir / "logs" / "cadenza.log")
     # Credential files written by an earlier version, or restored from a backup
     # that dropped the modes, are brought down to 0600 before anything is served.
     s.tighten_secret_files()
@@ -45,6 +47,14 @@ async def lifespan(app: FastAPI):
     await scheduler.start()
     log.info("%s %s ready - music_root=%s quarantine=%s",
              APP_NAME, APP_VERSION, s.music_root, s.quarantine_root)
+    # Said here as well as on the dashboard: the package starts either way,
+    # so the reason a scan finds nothing has to be somewhere a person looks.
+    access = s.library_access()
+    if not access["readable"]:
+        log.error("the library folder %s cannot be read by this account; scans will "
+                  "find nothing and nothing can be quarantined until access is granted "
+                  "(on DSM: Control Panel -> Shared Folder -> Edit -> Permissions -> "
+                  "System internal user -> tick cadenza)", access["path"])
     try:
         yield
     finally:

@@ -118,6 +118,18 @@ that pass covered and what it turned up.
   entries the library lacks, with their Apple Music links — are listed on
   the page.
 
+### Runs on both machines it was built for — 2.10.4
+
+- A library the service account cannot read is a state the dashboard shows,
+  with the Control Panel steps, rather than a crash at import. That crash is
+  what kept the DVA3221 at `start_failed` for 47 days over one missing
+  permission; with the permission granted, 2.10.3 scanned its 3,801-file
+  library there at about ten files a second on the Atom C3538.
+- `/settings/health` reports whether the library is `readable`, not only
+  whether it exists — a share the account may not enter still answers `stat`.
+- The quarantine folder is created by the first move into it, and nothing
+  creates directories at import any more.
+
 ---
 
 ## In progress
@@ -130,7 +142,8 @@ listed here after that shipped in 2.10.1 and 2.10.3, and a further one found
 in the meantime in 2.10.2. Nothing from the audit is outstanding.
 
 2.10.3 was installed on a DS1821+ running DSM 7.2 on 2026-09-13, over a
-4,025-track library, and exercised there: the package upgraded in place with
+4,025-track library, and later the same day on the DVA3221 (see below);
+on the DS1821+ it was exercised as follows: the package upgraded in place with
 the database and the account intact; a scan passed the new `ffprobe`
 preflight, which settles whether the FFmpeg 9.0 build's shared libraries load
 on DSM; the duplicates header agreed with the dashboard over 1,324 groups;
@@ -144,10 +157,10 @@ Open from that pass:
   The engine reports on two scales and the updates it schedules from its
   worker thread race each other, so a row can keep one column from one update
   and the other column from another.
-- **DVA3221** — the package has not yet been made to run on the second
-  machine it was built for. It is the same `x86_64` architecture with DSM 7.2
-  available, so the same `.spk` is expected to install; what actually happens
-  there is not yet recorded.
+- **DVA3221** — now running 2.10.3 (DSM 7.2.1, Atom C3538): the only thing
+  wrong was a share permission, which 2.10.4 turns from a silent crash into a
+  banner. A full first scan there took 6 minutes 37 seconds for 3,801 files,
+  against about two minutes on the DS1821+.
 
 ---
 

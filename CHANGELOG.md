@@ -4,6 +4,35 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.10.4] - 2026-09-13
+
+### Fixed
+
+- **A library the service account cannot read no longer kills the package.**
+  On the Synology package the quarantine lives inside the library, and the
+  quarantine folder was created at import time — so when the `cadenza`
+  account had not yet been given access to the music share, `mkdir` raised,
+  the process died three seconds after DSM started it, Package Center showed
+  `start_failed` with no reason, and the one-line explanation the start script
+  had already written sat in a log nobody opens. That is exactly what kept a
+  DVA3221 from ever starting: 47 days of `start_failed` for one missing
+  permission, on a machine the package was built for.
+
+  Three changes. The quarantine folder is created by the first move into it,
+  where a failure belongs to that job and is reported there. Nothing creates
+  directories at import any more — the last import-time side effect, after
+  the job queue and the engine's loop binding were moved out for the same
+  reason — so a permission problem is a state, not a crash. And that state is
+  shown where the user looks: the dashboard says which folder cannot be read
+  and lists the Control Panel steps, `/settings/health` reports `readable`
+  for the library (a share the account may not enter still "existed", because
+  it still answered `stat`), and the application log carries the same line.
+
+  Found on the DVA3221 and fixed there first by granting the permission;
+  with it granted, 2.10.3 scanned its 3,801-file library at about ten files
+  a second on the Atom C3538, with the same fourteen unreadable files the
+  DS1821+ reports.
+
 ## [2.10.3] - 2026-09-13
 
 The last seven from the feature audit. Four are places where the interface

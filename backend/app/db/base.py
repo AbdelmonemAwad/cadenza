@@ -22,8 +22,13 @@ class Base(DeclarativeBase):
     pass
 
 
+# No directory is created here. This module used to call ensure_dirs() at
+# import -- the last import-time side effect, after the job queue and the
+# engine's loop binding were moved out for the same reason -- and that is
+# what turned an unreadable music share into a crash before the application
+# had even finished importing. The directories are made in init_db(), which
+# is where the database first needs one.
 _settings = get_settings()
-_settings.ensure_dirs()
 
 engine = create_async_engine(
     _settings.db_url,
@@ -70,6 +75,9 @@ async def get_session() -> AsyncIterator[AsyncSession]:
 async def init_db() -> None:
     from app.db import models  # noqa: F401  -- registers the tables
     from app.db.migrations import SCHEMA_VERSION, back_up_if_pending, upgrade
+
+    # The database file needs its directory; so does the backup taken below.
+    _settings.ensure_dirs()
 
     # Before anything touches the schema, and deliberately outside the
     # transaction below: SQLite refuses VACUUM inside one. Returns immediately

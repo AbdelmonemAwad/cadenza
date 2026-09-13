@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shutil
 from pathlib import Path
 from typing import Any
@@ -77,8 +78,13 @@ async def health() -> dict:
     ffmpeg_ok = ffmpeg_available()
 
     def dir_state(p: Path) -> dict:
-        return {"path": str(p), "exists": p.exists(),
-                "writable": p.exists() and _writable(p)}
+        exists = p.exists()
+        return {"path": str(p), "exists": exists,
+                # `exists` is not enough on its own: a share the service
+                # account may not enter still answers `stat`, so it existed
+                # while every listing failed. The dashboard reads `readable`.
+                "readable": exists and os.access(p, os.R_OK | os.X_OK),
+                "writable": exists and _writable(p)}
 
     return {
         "app": {"name": APP_NAME, "version": APP_VERSION},
@@ -88,7 +94,7 @@ async def health() -> dict:
             else "Some tools are missing; fingerprinting or conversion may not work",
         },
         "paths": {
-            "music_root": dir_state(s.music_root),
+            "music_root": {**dir_state(s.music_root), **s.library_access()},
             "quarantine": dir_state(s.quarantine_root),
             "config": dir_state(s.config_dir),
         },
