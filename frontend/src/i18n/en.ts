@@ -66,6 +66,14 @@ const en = {
     expected: 'Expected',
     missing: 'Missing',
     statsError: 'Could not load statistics — {error}',
+    libraryUnreadable:
+      'Cadenza cannot read the library folder {path}. A scan will find nothing and '
+      + 'nothing can be quarantined until its account is allowed in.',
+    libraryUnreadableSteps:
+      'On DSM: Control Panel → Shared Folder → select your music folder → Edit → '
+      + 'Permissions → switch the dropdown to "System internal user" → tick cadenza '
+      + '(Read/Write) → Save. In the container: check the volume mount and the user '
+      + 'line in docker-compose.yml.',
   },
 
   library: {

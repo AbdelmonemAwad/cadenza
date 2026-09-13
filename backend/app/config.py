@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 from pathlib import Path
 from typing import Annotated, Any
@@ -13,7 +14,7 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from app.core.secretfile import tighten, write_private_text
 
 APP_NAME = "Cadenza"
-APP_VERSION = "2.10.3"   # kept in step with the VERSION file at the repo root
+APP_VERSION = "2.10.4"   # kept in step with the VERSION file at the repo root
 
 AUDIO_EXTENSIONS: frozenset[str] = frozenset({
     ".mp3", ".flac", ".wav", ".aac", ".m4a", ".m4b", ".alac",
@@ -172,9 +173,39 @@ class Settings(BaseSettings):
         return f"{self.user_agent} ( {self.musicbrainz_contact} )"
 
     def ensure_dirs(self) -> None:
+        """Create the directories that are Cadenza's own.
+
+        Not the quarantine root. On the Synology package it lives *inside* the
+        library, so creating it here made a permission problem on the music
+        share into an unhandled crash: the service account had no access to
+        the share, `mkdir` raised, and because this ran at import the process
+        died three seconds after DSM started it. Package Center showed
+        `start_failed` with no reason, and the one-line explanation the start
+        script had already written sat in a log nobody opens -- for 47 days,
+        on a DVA3221. The quarantine root is created by the first move into
+        it, where a failure belongs to that job and is reported there; until
+        then an unreadable library is a state the dashboard shows, not a
+        reason for the process to die.
+        """
         for p in (self.config_dir, self.cache_dir, self.artwork_cache,
-                  self.config_dir / "logs", self.quarantine_root):
+                  self.config_dir / "logs"):
             p.mkdir(parents=True, exist_ok=True)
+
+    def library_access(self) -> dict:
+        """Whether the service account can actually use the library folder.
+
+        `exists` alone was misleading: a share the account may not enter still
+        answers `stat`, so it "existed" while every listing failed. This is
+        what the dashboard asks before telling the user which permission to
+        grant.
+        """
+        p = self.music_root
+        exists = p.is_dir()
+        return {
+            "path": str(p),
+            "exists": exists,
+            "readable": exists and os.access(p, os.R_OK | os.X_OK),
+        }
 
     def tighten_secret_files(self) -> None:
         """Bring credential files down to 0600 on startup.

@@ -327,7 +327,13 @@ rather than assuming:
 grep -i cadenza /etc/passwd
 ```
 
-That account has no access to your shared folders until you give it some. Two
+That account has no access to your shared folders until you give it some. Until
+it has, the package still starts, but a scan finds nothing and nothing can be
+quarantined: the dashboard says which folder cannot be read and repeats the
+steps below, `/api/v1/settings/health` reports the library as not `readable`,
+and the same line is in `<config folder>/logs/cadenza.log`. (Before 2.10.4 the
+package crashed at this point instead, and Package Center showed `start_failed`
+with no reason — which is what kept a DVA3221 from starting for 47 days.) Two
 ways:
 
 1. **DSM UI.** Control Panel → **Shared Folder** → select the share → **Edit** →

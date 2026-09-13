@@ -382,3 +382,25 @@ async def test_a_job_reports_when_it_started_separately_from_when_it_was_queued(
     assert shown["created_at"].startswith("2026-01-01T10:00")
     assert shown["started_at"].startswith("2026-01-01T11:00")
     assert shown["started_at"] != shown["created_at"]
+
+
+async def test_health_says_whether_the_library_is_readable(populated, tmp_path,
+                                                            monkeypatch) -> None:
+    """`exists` was the only signal, and a share the service account may not
+    enter still answers `stat` — so it "existed" while every listing failed.
+    The dashboard reads `readable` to decide whether to show the fix."""
+    from app.config import get_settings
+
+    client, _ = populated
+    settings = get_settings()
+
+    monkeypatch.setattr(settings, "music_root", tmp_path / "absent")
+    gone = client.get("/api/v1/settings/health").json()["paths"]["music_root"]
+    assert gone["exists"] is False and gone["readable"] is False
+
+    present = tmp_path / "present"
+    present.mkdir()
+    monkeypatch.setattr(settings, "music_root", present)
+    here = client.get("/api/v1/settings/health").json()["paths"]["music_root"]
+    assert here["exists"] is True and here["readable"] is True
+    assert here["path"] == str(present)

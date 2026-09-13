@@ -71,6 +71,13 @@ const ar: Catalogue<typeof en> = {
     expected: 'المتوقع',
     missing: 'ناقص',
     statsError: 'تعذّر تحميل الإحصائيات — {error}',
+    libraryUnreadable:
+      'لا تستطيع Cadenza قراءة مجلد المكتبة {path}. لن يجد الفحص شيئاً ولن يمكن عزل أي '
+      + 'ملف حتى يُسمح لحسابها بالدخول.',
+    libraryUnreadableSteps:
+      'على DSM: لوحة التحكم ← المجلد المشترك ← اختر مجلد الموسيقى ← تحرير ← الأذونات ← '
+      + 'غيّر القائمة إلى "System internal user" ← علّم cadenza (قراءة/كتابة) ← حفظ. '
+      + 'في الحاوية: راجع تركيب المجلد وسطر user في docker-compose.yml.',
   },
 
   library: {
