@@ -45,8 +45,42 @@ keep and why, and moves the rest somewhere you can get them back from.
 
 ## Screenshots
 
-> Dashboard, duplicate review with score breakdown, and the conversion page.
-> *(Add screenshots to `docs/images/` and reference them here.)*
+Taken from a DS1821+ running Cadenza over a real library of 4,025 tracks.
+
+**Dashboard** — the library at a glance: totals, duplicates found, quality,
+what is in quarantine, metadata gaps and incomplete albums.
+
+![Dashboard](docs/images/dashboard.png)
+
+**Duplicate detection** — every group shows its match type, confidence and
+saving; every copy carries a score and the reason it won or lost, and the
+breakdown shows the eight criteria behind that score. Nothing moves until you
+say so.
+
+![Duplicate detection with the score breakdown open](docs/images/duplicates.png)
+
+**Audio conversion** — twelve FFmpeg presets, whole-format conversion, and the
+files the engine suggests converting and why. The original is kept by default.
+
+![Audio conversion](docs/images/convert.png)
+
+**Statistics** — what Cadenza has been doing over a window you choose:
+activity per day, coverage for lossless, artwork and lyrics, jobs by kind.
+
+![Statistics](docs/images/statistics.png)
+
+**Jobs & Schedule** — recurring tasks and the history of every run, with real
+start times and a Stop button that stops.
+
+![Jobs and schedule](docs/images/jobs.png)
+
+**Library** — browse, search and sort the index.
+
+![Library](docs/images/library.png)
+
+The interface is bilingual and mirrors fully for Arabic:
+
+![Dashboard in Arabic](docs/images/dashboard-ar.png)
 
 ## Requirements
 
