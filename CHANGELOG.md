@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.10.8] - 2026-09-14
+
+### Added
+
+- **Apple's catalogue without a MusicKit key.** A MusicKit key needs an Apple
+  Developer Program membership, and without one the whole Apple integration
+  said "not configured". Only your own library needs the key. The catalogue
+  — matching, artwork at full size, track and disc numbers, release dates,
+  genres and the "open in Apple Music" link — is answered by Apple's key-free
+  search with the same catalogue ids, at about twenty lookups a minute, which
+  the provider's limiter respects. It is on by default on a fresh install and
+  can be switched off in Settings → Apple Music; with a key configured
+  nothing changes. What the key-free catalogue cannot give is the ISRC and
+  your playlists, and the Apple Music page now says exactly that instead of
+  calling everything incomplete: the catalogue card shows which catalogue
+  answers, the account card says the Developer Program is needed for linking
+  and links to it, and "Match library" works either way.
+
 ## [2.10.7] - 2026-09-14
 
 ### Fixed

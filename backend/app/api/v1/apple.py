@@ -58,18 +58,23 @@ def _provider(s: AsyncSession, user_token: str | None = None) -> AppleMusicProvi
     provider = AppleMusicProvider(s, user_token=user_token or _load_user_token())
     if not provider.enabled:
         raise HTTPException(
-            400, "Apple Music is not configured: set TEAM_ID, KEY_ID and the .p8 key")
+            400, "Apple Music is off: no MusicKit key is configured and the key-free "
+                 "catalogue is switched off in Settings")
     return provider
 
 
 @router.get("/status")
 async def status(s: AsyncSession = Depends(get_session)) -> dict:
     cfg = get_settings()
-    configured = bool(cfg.apple_team_id and cfg.apple_key_id
-                      and cfg.apple_key_file.is_file())
+    provider = AppleMusicProvider(s)
     matched = (await s.execute(
         select(func.count(Track.id)).where(Track.apple_id.isnot(None)))).scalar() or 0
-    return {"configured": configured, "user_linked": bool(_load_user_token()),
+    # `configured` keeps meaning "a MusicKit key is present". `catalogue` is
+    # what answers lookups -- the key, Apple's key-free catalogue, or nothing
+    # -- and `library` whether the user's own playlists are reachable, which
+    # only the key allows.
+    return {"configured": provider.has_key, "catalogue": provider.catalogue,
+            "library": provider.has_key, "user_linked": bool(_load_user_token()),
             "storefront": cfg.apple_storefront, "matched_tracks": matched}
 
 

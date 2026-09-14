@@ -134,6 +134,7 @@ WRITABLE_FIELDS: dict[str, Callable[[str, Any], Any]] = {
 
     # Duplicate engine
     "acoustic_enabled": _boolean,
+    "apple_itunes_catalogue": _boolean,
     # Below ~0.85 the threshold sits near the 0.5 Hamming baseline for unrelated
     # audio and starts matching different songs.
     "acoustic_match_threshold": _bounded(0.85, 0.999),

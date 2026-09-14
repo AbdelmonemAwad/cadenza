@@ -4,6 +4,7 @@ import { useI18n } from '../i18n'
 
 type Status = {
   configured: boolean; user_linked: boolean
+  catalogue: 'musickit' | 'itunes' | 'off'; library: boolean
   storefront: string; matched_tracks: number
 }
 type Playlist = {
@@ -170,18 +171,26 @@ export default function AppleMusic() {
       </div>
 
       {message && <div className="banner">{message}</div>}
-      {status && !status.configured && (
+      {status && status.catalogue === 'off' && (
         <div className="banner warn">{t('apple.notConfigured')}</div>
       )}
 
+      {/* Two things used to be one "configured" flag, and without a key the
+          whole page said "incomplete". The catalogue -- matching, artwork,
+          track numbers, links -- works with no key at all through Apple's
+          key-free search; only the user's own library needs a MusicKit key
+          from the Developer Program. The page says which is which. */}
       <div className="grid cols-3">
         <div className="card">
           <div className="stat-label">{t('apple.configStatus')}</div>
-          <div className={`stat-value ${status?.configured ? 'ok' : 'warn'}`}>
-            {status?.configured ? t('apple.ready') : t('apple.incomplete')}
+          <div className={`stat-value ${status?.catalogue === 'off' ? 'warn' : 'ok'}`}>
+            {status?.catalogue === 'musickit' ? t('apple.catalogueMusicKit')
+              : status?.catalogue === 'itunes' ? t('apple.catalogueItunes')
+              : t('apple.catalogueOff')}
           </div>
           <div className="stat-hint">
             {t('apple.storefront', { code: status?.storefront ?? '—' })}
+            {status?.catalogue === 'itunes' && <> {t('apple.itunesHint')}</>}
           </div>
         </div>
 
@@ -190,9 +199,18 @@ export default function AppleMusic() {
           <div className={`stat-value ${status?.user_linked ? 'ok' : ''}`}>
             {status?.user_linked ? t('apple.linked') : t('apple.notLinked')}
           </div>
-          <p className="muted" style={{ marginTop: 8 }}>{t('apple.linkExplainer')}</p>
+          {status?.library
+            ? <p className="muted" style={{ marginTop: 8 }}>{t('apple.linkExplainer')}</p>
+            : (
+              <p className="muted" style={{ marginTop: 8 }}>
+                {t('apple.libraryNeedsKey')}{' '}
+                <a href="https://developer.apple.com/programs/" target="_blank" rel="noreferrer">
+                  {t('apple.developerProgram')}
+                </a>
+              </p>
+            )}
           <button className="btn primary sm" style={{ marginTop: 8 }}
-            disabled={busy || !status?.configured} onClick={linkAccount}>
+            disabled={busy || !status?.library} onClick={linkAccount}>
             {status?.user_linked ? t('apple.relink') : t('apple.linkAccount')}
           </button>
         </div>
@@ -201,7 +219,7 @@ export default function AppleMusic() {
           <div className="stat-label">{t('apple.matchedTracks')}</div>
           <div className="stat-value">{n(status?.matched_tracks ?? 0)}</div>
           <button className="btn sm" style={{ marginTop: 8 }}
-            disabled={busy || !status?.configured} onClick={runMatch}>
+            disabled={busy || !status || status.catalogue === 'off'} onClick={runMatch}>
             {t('apple.matchLibrary')}
           </button>
         </div>

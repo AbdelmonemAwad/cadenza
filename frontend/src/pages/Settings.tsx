@@ -342,6 +342,11 @@ export default function Settings() {
               {t('settings.appleLinkKeys')}
             </a>
           </p>
+          <label className="check">
+            <input type="checkbox" checked={!!value('apple_itunes_catalogue')}
+              onChange={(e) => set('apple_itunes_catalogue', e.target.checked)} />
+            {t('settings.appleItunesCatalogue')}
+          </label>
           <label className="field">
             <span>{t('settings.teamId')}</span>
             <input type="text" value={value('apple_team_id') ?? ''}

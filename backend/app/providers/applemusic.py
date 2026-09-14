@@ -8,16 +8,26 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 
 import jwt
 from rapidfuzz import fuzz
 
-from app.providers.base import BaseProvider, ProviderError, TrackMetadata
+from app.providers.base import BaseProvider, ProviderError, RateLimiter, TrackMetadata
 
 log = logging.getLogger(__name__)
 
 API = "https://api.music.apple.com/v1"
+
+# Apple's catalogue without a key. The iTunes Search API has answered with no
+# credential since 2010 and returns the same catalogue ids MusicKit does --
+# `trackId` is the Apple Music song id, `collectionId` the album -- so
+# matching, artwork, track numbers, release dates and the Apple Music link
+# need no Developer Program membership at all. It carries no ISRC, and it is
+# limited to about twenty requests a minute per address (issue #66).
+ITUNES = "https://itunes.apple.com"
+ITUNES_RATE = (20, 60.0)
 
 # One hour, not the 150 days this used to mint. Apple's ceiling is 180 days,
 # but a ceiling is not a recommendation: the token is signed with the user's
@@ -44,16 +54,34 @@ class AppleMusicProvider(BaseProvider):
         self.user_token = user_token
         self._dev_token: str | None = None
         self._dev_exp: float = 0.0
+        if not self.has_key:
+            self._limiter = RateLimiter(*ITUNES_RATE)
 
     @property
-    def enabled(self) -> bool:
+    def has_key(self) -> bool:
+        """A MusicKit key: needed for the user's library, not for the catalogue."""
         s = self.settings
         return bool(s.apple_team_id and s.apple_key_id
                     and s.apple_key_file.is_file())
 
+    @property
+    def catalogue(self) -> str:
+        """Which catalogue answers lookups: "musickit", "itunes" or "off"."""
+        if self.has_key:
+            return "musickit"
+        return "itunes" if self.settings.apple_itunes_catalogue else "off"
+
+    @property
+    def enabled(self) -> bool:
+        return self.catalogue != "off"
+
     # ---- Tokens ----
 
     def developer_token(self) -> str:
+        if not self.has_key:
+            raise ProviderError(
+                "linking an Apple Music account needs a MusicKit key from the Apple "
+                "Developer Program; the catalogue works without one")
         now = time.time()
         if self._dev_token and now < self._dev_exp - TOKEN_REFRESH_MARGIN:
             return self._dev_token
@@ -89,6 +117,8 @@ class AppleMusicProvider(BaseProvider):
                      isrc=None, **_) -> list[TrackMetadata]:
         if not self.enabled:
             return []
+        if self.catalogue == "itunes":
+            return await self._itunes_lookup(title, artist, album, duration)
         if isrc:
             found = await self.by_isrc(isrc)
             if found:
@@ -110,7 +140,26 @@ class AppleMusicProvider(BaseProvider):
         out.sort(key=lambda m: m.confidence, reverse=True)
         return out
 
+    async def _itunes_lookup(self, title, artist, album, duration) -> list[TrackMetadata]:
+        if not title:
+            return []
+        term = " ".join(x for x in (artist, title) if x)
+        data = await self.cached_json(
+            ("itunes-search", self.storefront, term),
+            f"{ITUNES}/search",
+            params={"term": term, "media": "music", "entity": "song",
+                    "country": self.storefront, "limit": 10},
+        )
+        out = [self._from_itunes(r) for r in (data or {}).get("results") or []
+               if r.get("wrapperType") == "track"]
+        for md in out:
+            md.confidence = self._confidence(md, title, artist, album, duration)
+        out.sort(key=lambda m: m.confidence, reverse=True)
+        return out
+
     async def by_isrc(self, isrc: str) -> list[TrackMetadata]:
+        if self.catalogue != "musickit":
+            return []                       # the key-free catalogue has no ISRC filter
         data = await self.cached_json(
             ("isrc", self.storefront, isrc),
             f"{API}/catalog/{self.storefront}/songs",
@@ -172,6 +221,21 @@ class AppleMusicProvider(BaseProvider):
         return r.json() if r.status_code < 400 else None
 
     async def album_tracks(self, album_id: str) -> list[dict]:
+        if self.catalogue == "itunes":
+            data = await self.cached_json(
+                ("itunes-album", self.storefront, album_id),
+                f"{ITUNES}/lookup",
+                params={"id": album_id, "entity": "song", "country": self.storefront},
+            )
+            # The first result is the album itself and the rest are its songs,
+            # reshaped to what MusicKit returns so the caller need not care.
+            return [
+                {"id": str(r.get("trackId")), "attributes": {
+                    "name": r.get("trackName"), "trackNumber": r.get("trackNumber"),
+                    "durationInMillis": r.get("trackTimeMillis"), "url": r.get("trackViewUrl")}}
+                for r in (data or {}).get("results") or []
+                if r.get("wrapperType") == "track"
+            ]
         data = await self.cached_json(
             ("album", self.storefront, album_id),
             f"{API}/catalog/{self.storefront}/albums/{album_id}",
@@ -183,6 +247,39 @@ class AppleMusicProvider(BaseProvider):
         return ((albums[0].get("relationships") or {}).get("tracks") or {}).get("data") or []
 
     # ---- Conversion ----
+
+    def _from_itunes(self, r: dict) -> TrackMetadata:
+        art_url = px = None
+        raw = r.get("artworkUrl100")
+        if raw:
+            # Apple serves whatever size the URL names; the originals go up
+            # to 3000 px, and the 100x100 in the response is just a default.
+            px = min(3000, self.settings.artwork_target_px)
+            art_url = re.sub(r"/\d+x\d+bb\.", f"/{px}x{px}bb.", raw)
+        release = (r.get("releaseDate") or "")[:10]
+        return TrackMetadata(
+            source=self.name,
+            title=r.get("trackName"),
+            artist=r.get("artistName"),
+            albumartist=r.get("collectionArtistName") or r.get("artistName"),
+            album=r.get("collectionName"),
+            date=release or None,
+            year=int(release[:4]) if release[:4].isdigit() else None,
+            track_no=r.get("trackNumber"),
+            disc_no=r.get("discNumber"),
+            genre=r.get("primaryGenreName"),
+            composer=None,
+            isrc=None,
+            apple_id=str(r["trackId"]) if r.get("trackId") is not None else None,
+            artwork_url=art_url,
+            artwork_px=px,
+            extra={
+                "url": r.get("trackViewUrl"),
+                "duration_ms": r.get("trackTimeMillis"),
+                "album_id": str(r["collectionId"]) if r.get("collectionId") is not None else None,
+                "catalogue": "itunes",
+            },
+        )
 
     def _from_song(self, song: dict) -> TrackMetadata:
         attrs = song.get("attributes") or {}

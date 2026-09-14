@@ -268,8 +268,19 @@ const ar: Catalogue<typeof en> = {
     title: 'Apple Music',
     subtitle: 'مطابقة المكتبة ومزامنة قوائم التشغيل',
     notConfigured:
-      'Apple Music غير مهيّأ. في الإعدادات ← Apple Music أدخل Team ID وKey ID وارفع مفتاح '
-      + 'التوقيع .p8. يتطلب عضوية Apple Developer Program، وصفحة الإعدادات تشرح مصدر كل قيمة.',
+      'Apple Music متوقف: لا يوجد مفتاح MusicKit، والكتالوج بلا مفتاح معطّل في الإعدادات ← '
+      + 'Apple Music. فعّل الكتالوج أو أدخل مفتاحاً.',
+    catalogueMusicKit: 'الكتالوج عبر MusicKit',
+    catalogueItunes: 'الكتالوج بلا مفتاح',
+    catalogueOff: 'متوقف',
+    itunesHint:
+      'الأغلفة وأرقام المسارات وتواريخ الإصدار وروابط Apple Music تأتي من كتالوج Apple '
+      + 'المجاني بلا مفتاح (نحو 20 استعلاماً في الدقيقة). رمز ISRC وقوائم تشغيلك يحتاجان '
+      + 'مفتاح MusicKit.',
+    libraryNeedsKey:
+      'ربط الحساب، ومعه قوائم تشغيلك، يحتاج مفتاح MusicKit من Apple Developer Program. '
+      + 'الكتالوج يعمل بدونه.',
+    developerProgram: 'Apple Developer Program',
     linkExplainer:
       'الربط يفتح نافذة تسجيل الدخول الخاصة بـ Apple نفسها. لا ترى Cadenza كلمة مرور Apple ID '
       + 'أبداً، والتحقق الثنائي تتولاه Apple، وما يعود هو رمز وصول لمكتبتك يمكنك إلغاؤه من حساب '
@@ -482,9 +493,13 @@ const ar: Catalogue<typeof en> = {
     providerDiscogs: 'سنوات الإصدار والإصدارات النادرة أو الإقليمية. رمز شخصي مجاني.',
     providerLastfm: 'الأنواع الموسيقية وتصحيح أسماء الفنانين. حساب API مجاني.',
     appleGuide:
-      'تتواصل Cadenza مع Apple Music عبر MusicKit الذي يتطلب عضوية Apple Developer Program. '
-      + 'تجد Team ID في صفحة العضوية، أما Key ID وملف .p8 فمن مفتاح MusicKit تنشئه تحت Keys. '
-      + 'هذه القيم توقّع رمز المطوّر فقط، ولا شيء منها كلمة مرور Apple ID التي لا تطلبها Cadenza أبداً.',
+      'المطابقة والأغلفة وأرقام المسارات وروابط Apple Music تعمل بلا أي مفتاح عبر كتالوج Apple '
+      + 'المجاني. مفتاح MusicKit مطلوب فقط لمكتبتك وقوائم تشغيلك، ويتطلب عضوية Apple Developer '
+      + 'Program: تجد Team ID في صفحة العضوية، أما Key ID وملف .p8 فمن مفتاح MusicKit تنشئه '
+      + 'تحت Keys. هذه القيم توقّع رمز المطوّر فقط، ولا شيء منها كلمة مرور Apple ID التي لا '
+      + 'تطلبها Cadenza أبداً.',
+    appleItunesCatalogue:
+      'استخدام كتالوج Apple المجاني (iTunes Search) عندما لا يوجد مفتاح MusicKit',
     appleLinkProgram: 'Developer Program',
     appleLinkTeam: 'تفاصيل العضوية (Team ID)',
     appleLinkKeys: 'Keys (إنشاء مفتاح MusicKit)',

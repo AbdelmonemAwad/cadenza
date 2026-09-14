@@ -14,7 +14,7 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from app.core.secretfile import tighten, write_private_text
 
 APP_NAME = "Cadenza"
-APP_VERSION = "2.10.7"   # kept in step with the VERSION file at the repo root
+APP_VERSION = "2.10.8"   # kept in step with the VERSION file at the repo root
 
 AUDIO_EXTENSIONS: frozenset[str] = frozenset({
     ".mp3", ".flac", ".wav", ".aac", ".m4a", ".m4b", ".alac",
@@ -125,6 +125,12 @@ class Settings(BaseSettings):
     # never be configured there at all.
     apple_private_key_path: Path | None = None
     apple_storefront: str = "us"
+    # Apple's catalogue without a MusicKit key. The iTunes Search API answers
+    # with no credential and returns the same catalogue ids MusicKit does, so
+    # matching, artwork, track numbers, release dates and "open in Apple
+    # Music" links work without a Developer Program membership. Only the
+    # user's own library -- playlists, account linking -- needs the key.
+    apple_itunes_catalogue: bool = True
 
     provider_order: list[str] = Field(
         default_factory=lambda: ["musicbrainz", "applemusic", "discogs", "lastfm"]
