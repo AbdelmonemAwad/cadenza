@@ -434,21 +434,29 @@ jobs:
           # wrong text is a notice defect, so the version is asserted here.
           grep -q "Version 3" /tmp/payload/doc/licences/ffmpeg-LICENSE.txt             || { echo "expected the LGPLv3 text from the lgpl-shared build"; exit 1; }
 
+      # `overwrite` on both: a rerun of a failed job replaces what the failed
+      # attempt uploaded. Without it the run held two artifacts of the same
+      # name and the release job downloaded the first, incomplete one -- that
+      # is how 2.10.8 was published without the chromaprint source (#71).
       - uses: actions/upload-artifact@v4
         with:
           name: cadenza-spk
           path: dist/*.spk
           retention-days: 30
+          overwrite: true
 
       # LGPL 2.1 s.4 does not accept a download link as source delivery, so the
-      # corresponding source travels with the binaries it belongs to.
+      # corresponding source travels with the binaries it belongs to. It is
+      # uploaded only when the build succeeded: the build script stages both
+      # archives or dies, so a partial set means a failed build, and a failed
+      # build must leave nothing behind for a rerun to release.
       - uses: actions/upload-artifact@v4
-        if: always()
         with:
           name: cadenza-thirdparty-source
           path: build/cache/sources/*
           retention-days: 90
-          if-no-files-found: warn
+          if-no-files-found: error
+          overwrite: true
 
   # Every version that lands on main becomes a published release, with the .spk
   # attached. Without this the repository showed v1.0.0 as the newest release
@@ -502,10 +510,32 @@ jobs:
       - name: Download the third-party source
         if: steps.check.outputs.exists == 'false'
         uses: actions/download-artifact@v4
-        continue-on-error: true
         with:
           name: cadenza-thirdparty-source
           path: dist/third-party-source
+
+      # No corresponding source, no release. The package build refuses to ship
+      # the binaries without it, and this job must not undo that with a glob
+      # that may match nothing: 2.10.8 went out with the ffmpeg source and no
+      # chromaprint source that way (#71).
+      - name: Verify the corresponding source is complete
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          ls -l dist/third-party-source/
+          missing=0
+          if ! ls dist/third-party-source/ffmpeg-*.tar.* >/dev/null 2>&1; then
+            echo "::error::the third-party-source artifact holds no ffmpeg source archive"
+            missing=1
+          fi
+          if ! ls dist/third-party-source/chromaprint-*.tar.gz >/dev/null 2>&1; then
+            echo "::error::the third-party-source artifact holds no chromaprint source archive"
+            missing=1
+          fi
+          if [ "${missing}" -ne 0 ]; then
+            echo "::error::refusing to publish v${{ steps.v.outputs.version }} without the corresponding source"
+            exit 1
+          fi
+          echo "corresponding source present"
 
       - name: Publish
         if: steps.check.outputs.exists == 'false'
@@ -531,21 +561,21 @@ jobs:
             echo "You choose the username and password the first time you open it;"
             echo "nothing is generated and there is no default credential."
             echo
-            echo "\`third-party-source\` contains the corresponding source for the"
-            echo "bundled LGPL binaries."
+            echo "The \`ffmpeg-*\` and \`chromaprint-*\` archives are the corresponding"
+            echo "source for the bundled LGPL binaries."
             echo
             echo "Full history: [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/main/CHANGELOG.md)"
           } > "$notes"
 
           # Collected into an array rather than an unquoted $(ls ...): word
-          # splitting would tear any filename containing a space, and the
-          # third-party download is best effort so the glob may match nothing.
+          # splitting would tear any filename containing a space. The step
+          # above already failed the job if the source archives are not here.
           assets=()
           for f in dist/*.spk dist/third-party-source/*; do
             [ -f "$f" ] && assets+=("$f")
           done
-          if [ "${#assets[@]}" -eq 0 ]; then
-            echo "::error::no assets to attach to v${VERSION}"
+          if [ "${#assets[@]}" -lt 3 ]; then
+            echo "::error::expected the package and two source archives for v${VERSION}, found ${#assets[@]}"
             exit 1
           fi
           printf '  attaching: %s\n' "${assets[@]}"

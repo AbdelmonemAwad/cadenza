@@ -262,36 +262,34 @@ must be accompanied by:
    GPLv3 §6) — directly relevant here, since Cadenza is installed on a consumer
    NAS.
 
-### Current status: not met
+### Current status
 
-`packaging/synology/build-native-payload.sh:29-31` states that "the release job
-ships the corresponding source archive next to the package." That job does not
-exist. There is exactly one workflow, `.github/workflows/ci.yml`, and it contains
-no step that fetches or publishes any ffmpeg or chromaprint source archive.
+Both deliverables the package can carry are in place, and CI checks each of
+them:
 
-The licence texts are not shipped either. `build-native-payload.sh` untars the
-ffmpeg archive with `--strip-components=1`, then copies only `bin/ffmpeg`,
-`bin/ffprobe` and `lib/.` into the stage. The archive's root `LICENSE.txt` — the
-LGPLv3 text — stays in the build cache. Meanwhile `build-spk.sh:56` copies only
-the project's own `LICENSE` into `doc/`, and that file is the MIT licence.
+- **Licence texts.** `build-native-payload.sh` copies the ffmpeg archive's
+  `LICENSE.txt` — the LGPLv3 text — to `doc/licences/ffmpeg-LICENSE.txt`,
+  fetches chromaprint's `LICENSE.md` to `doc/licences/fpcalc-LICENSE.md`, and
+  writes `doc/licences/README.txt` saying which program is covered by which
+  text. The package job in `.github/workflows/ci.yml` fails when any of the
+  three is missing, or when the ffmpeg text is not an LGPL version 3 text.
+- **Corresponding source.** The same script downloads the source archive for
+  the exact ffmpeg commit the shipped binaries report (`ffmpeg-<commit>.tar.gz`,
+  or the tagged tarball for a plain release build) and chromaprint's v1.5.1
+  tarball (`chromaprint-1.5.1.tar.gz`), and stops the build if either cannot
+  be obtained, so binaries without their source never reach the stage. The
+  release job attaches both archives to the GitHub release next to the `.spk`.
+  Since 2.10.11 it verifies that both are present before it publishes and
+  fails otherwise, and a rerun of a failed build replaces the artifact of the
+  failed attempt rather than adding a second one under the same name — the
+  way 2.10.8 came to be published with the ffmpeg source and no chromaprint
+  source (issue #71; that file was uploaded to the release by hand).
 
-The released `.spk` therefore contains LGPLv3 and LGPL-2.1 binaries accompanied
-solely by an MIT licence. On its face that is a notice defect.
-
-### What closing it requires
-
-- Copy the ffmpeg archive's `LICENSE.txt` into the stage (for example
-  `doc/ffmpeg-LICENSE.txt`) and add chromaprint's `LICENSE.md` alongside it.
-- Add a release step that publishes the corresponding source archives for both
-  upstreams, pinned to the exact versions shipped, or a written offer valid for
-  the period the licence requires.
-- Correct the comment at `build-native-payload.sh:27-31`, which reasons only
-  about avoiding x264/x265, and any NOTICE text that says LGPL 2.1, to reference
-  LGPL v3 for ffmpeg/ffprobe and LGPL-2.1-only for fpcalc.
-
-Until those land, this section documents an obligation the project has
-identified but does not yet satisfy. It should not be read as a compliance
-statement.
+One point is stated here, not resolved. The ffmpeg build shipped is BtbN's
+*shared* LGPL variant: `ffmpeg` and `ffprobe` load the libraries from the
+package's `lib/` directory at run time, so a user can replace them there.
+This document does not claim that this alone satisfies LGPLv3 §4(e) on a DSM
+appliance.
 
 ## The open question: mutagen
 

@@ -4,6 +4,21 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.10.11] - 2026-09-14
+
+### Fixed
+
+- **A rerun can no longer publish a release with a stale source archive.**
+  Release 2.10.8 went out with the `.spk` and the ffmpeg source and no
+  chromaprint source: the package job had failed once on a `504` from GitHub
+  after uploading a partial `third-party-source` artifact, the rerun added
+  a second, complete artifact of the same name, and the release job
+  downloaded the first. The artifacts are now uploaded with `overwrite`, the
+  source artifact is uploaded only when the build succeeded, and the release
+  job checks that both the ffmpeg and the chromaprint archive are present
+  before it publishes, and fails otherwise. No corresponding source, no
+  release — the rule the package build already applied to the binaries.
+
 ## [2.10.10] - 2026-09-14
 
 ### Fixed

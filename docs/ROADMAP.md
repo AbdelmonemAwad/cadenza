@@ -156,6 +156,18 @@ that pass covered and what it turned up.
 - 2.10.10: enrichment reports `unmatched` apart from `failed`, and points at
   AcoustID when most tracks could not be identified by name.
 
+### Releases that carry what they must — 2.10.9 and 2.10.11
+
+- The package build rides out a short outage at GitHub (2.10.9): curl's own
+  backoff runs for up to three minutes on a `5xx`, and a real `404` still
+  fails at once.
+- A rerun cannot publish a release with a stale source archive (2.10.11).
+  2.10.8 went out without the chromaprint source because the rerun picked the
+  artifact a failed attempt had uploaded. Artifacts are replaced on rerun, the
+  source is uploaded only from a successful build, and the release job checks
+  that both the ffmpeg and the chromaprint archive are present before it
+  publishes — no corresponding source, no release.
+
 ---
 
 ## In progress
