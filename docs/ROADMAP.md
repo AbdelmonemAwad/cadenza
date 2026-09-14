@@ -135,6 +135,9 @@ that pass covered and what it turned up.
 - Duplicate analysis no longer finishes showing `20000/4`. Progress is written
   as a pair in one statement, reports from the engine's thread are applied in
   order with a final `100/100`, and the engine reports on one scale.
+- Enrichment runs past the fifth track (2.10.7): the job commits after every
+  track instead of holding the write lock across every provider call, and a
+  progress report that cannot get the lock is logged rather than fatal.
 
 ### Integrations explained where they are set up — 2.10.6
 

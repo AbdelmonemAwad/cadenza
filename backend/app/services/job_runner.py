@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy import select, update
+from sqlalchemy.exc import OperationalError
 
 from app.config import get_settings
 from app.core import fingerprint, hashing
@@ -206,8 +207,17 @@ class JobRunner:
         values: dict = {"processed": processed, "total": total}
         if message:
             values["message"] = message[:500]
-        async with session_scope() as s:
-            await s.execute(update(Job).where(Job.id == job_id).values(**values))
+        try:
+            async with session_scope() as s:
+                await s.execute(update(Job).where(Job.id == job_id).values(**values))
+        except OperationalError as exc:
+            # Bookkeeping must never take the job with it. SQLite has one
+            # writer; if the handler's own session is holding it -- enrichment
+            # did, across every provider lookup -- this write waits out
+            # busy_timeout and raises, and the job that was doing real work
+            # died of the line meant to say how far it had got (issue #61).
+            log.warning("progress for job %s was not written (%s); the job continues",
+                        job_id, str(exc).splitlines()[0][:160])
         await self.broadcast({"type": "job.progress", "job_id": job_id,
                               "processed": processed, "total": total,
                               "message": message})
@@ -591,6 +601,15 @@ async def handle_enrich(job_id: int, params: dict, dry_run: bool,
                     want_lyrics=params.get("lyrics", True),
                     job_id=job_id,
                 )
+                # Commit per track. The providers cache every response through
+                # this session, so from the first lookup onwards it held the
+                # database's only write lock -- for the whole run, across every
+                # rate-limited network call -- and the progress write below,
+                # made through another session, waited out busy_timeout and
+                # killed the job at track five, every time (issue #61). A
+                # track's own writes are also safe the moment it is done,
+                # rather than only if the entire run gets to the end.
+                await s.commit()
                 if r.error:
                     failed += 1
                 elif r.applied or (dry_run and r.changed_fields):
