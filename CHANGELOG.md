@@ -4,6 +4,26 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.11.1] - 2026-09-14
+
+### Fixed
+
+- **A lookup no longer drops the provider that lost a race for the session.**
+  Every lookup fans out to the six providers at once, and each read and wrote
+  its cache rows through the caller's session — one session, used from six
+  coroutines. SQLAlchemy refuses that, and the log carried "This session is
+  provisioning a new connection; concurrent operations are not permitted" on
+  almost every track (298 times in one preview run): the provider that lost
+  the race was dropped from that track's result with a warning. The cache now
+  reads and writes through short sessions of its own.
+- **Enrichment no longer holds the database's write lock across its network
+  calls.** A cache write through the caller's session opened the job's write
+  transaction at the first miss of a track and kept it open until the track
+  was committed — every network call in between. The progress row and any
+  write from the interface waited out `busy_timeout` and failed with
+  "database is locked". A cache row is now committed in milliseconds, and the
+  job's transaction stays closed until it has tags to record.
+
 ## [2.11.0] - 2026-09-14
 
 ### Added
