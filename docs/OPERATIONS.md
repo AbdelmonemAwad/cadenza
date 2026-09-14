@@ -192,6 +192,18 @@ Two consequences worth holding onto:
   check. Those run only on the real pass, where a target that appeared since
   planning is refused with `target appeared since planning, not moved`.
 
+### Where each job is applied
+
+A preview is the first of two buttons on every page that writes; the second
+confirms and queues the real run. Enrichment is applied from the Library page's
+*Enrich metadata* panel (scope, limit, overwrite, artwork, lyrics, minimum
+confidence), organizing from the Organize page (which shows the plan of a
+finished preview: from → to, what could not be planned and why), conversion
+from Convert, quarantining from Duplicates. The dashboard's quick actions are
+previews only and say so. A media server reading the same share sees the result
+of a real run after it rescans the folder; README's "Preview, then apply"
+section has the Plex steps.
+
 Most API endpoints carry their own `dry_run` field defaulting to `true` and pass
 it explicitly. `dry_run_default` is what applies when the flag is omitted, which
 happens in exactly three places: `POST /api/v1/jobs` without `dry_run`, the

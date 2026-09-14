@@ -12,6 +12,7 @@ import Duplicates from './pages/Duplicates'
 import Jobs from './pages/Jobs'
 import Library from './pages/Library'
 import Logs from './pages/Logs'
+import Organize from './pages/Organize'
 import Quarantine from './pages/Quarantine'
 import Settings from './pages/Settings'
 import Statistics from './pages/Statistics'
@@ -20,6 +21,7 @@ const NAV: { to: string; key: TranslationKey; icon: string }[] = [
   { to: '/dashboard', key: 'nav.dashboard', icon: '▦' },
   { to: '/library', key: 'nav.library', icon: '♪' },
   { to: '/duplicates', key: 'nav.duplicates', icon: '⧉' },
+  { to: '/organize', key: 'nav.organize', icon: '▤' },
   { to: '/convert', key: 'nav.convert', icon: '⇄' },
   { to: '/quarantine', key: 'nav.quarantine', icon: '⌫' },
   { to: '/cleanup', key: 'nav.cleanup', icon: '✧' },
@@ -124,6 +126,7 @@ export default function App() {
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/library" element={<Library />} />
           <Route path="/duplicates" element={<Duplicates />} />
+          <Route path="/organize" element={<Organize />} />
           <Route path="/convert" element={<Convert />} />
           <Route path="/quarantine" element={<Quarantine />} />
           <Route path="/cleanup" element={<Cleanup />} />
