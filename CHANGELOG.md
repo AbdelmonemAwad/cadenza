@@ -4,6 +4,27 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.10.7] - 2026-09-14
+
+### Fixed
+
+- **Enrichment runs past the fifth track.** It could not before, on any real
+  install: the providers cache every response through the job's own session,
+  so from the first lookup that session held SQLite's only write lock — for
+  the whole run, across every rate-limited network call — and the first
+  progress report, written through a second session after five tracks,
+  waited out the 30-second `busy_timeout`, raised `database is locked`, and
+  took the job with it. Seen on the DS1821+ at 47 seconds in, and the same
+  four failures on 2026-07-28 were almost certainly this. The job now commits
+  after every track, which releases the lock between tracks and also means a
+  track's writes survive even if the run is stopped or fails later.
+- **A progress report can no longer kill a job.** The write that says how far
+  a job has got is bookkeeping; if it cannot get the lock it is logged and
+  dropped, the live feed still gets the event, and the job goes on. The other
+  long handlers were checked: conversion and fingerprinting already keep their
+  sessions short, and duplicate application reports outside its per-group
+  session.
+
 ## [2.10.6] - 2026-09-13
 
 ### Added
