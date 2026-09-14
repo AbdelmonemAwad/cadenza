@@ -13,6 +13,8 @@ Convert formats. Never lose a file.
 
 [العربية](README.ar.md) · [Roadmap](docs/ROADMAP.md) · [Install](docs/INSTALL.md) · [Operations](docs/OPERATIONS.md) · [Architecture](docs/ARCHITECTURE.md) · [Third-party licences](docs/THIRD-PARTY.md) · [Contributing](CONTRIBUTING.md)
 
+<img src="docs/images/social-preview.png" alt="Cadenza — music library curation for Synology NAS" width="880">
+
 </div>
 
 ---
