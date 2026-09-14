@@ -4,6 +4,19 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.10.9] - 2026-09-14
+
+### Changed
+
+- **The package build rides out a short outage at GitHub.** Twice in one day
+  a `504` from GitHub itself — once on the ffmpeg archive, once on the
+  chromaprint source that ships for the LGPL — failed the build, and the
+  second one blocked a release until someone pressed rerun. The download
+  retried three times two seconds apart, six seconds in all. It now lets
+  curl's own backoff run for up to three minutes on the errors curl already
+  treats as transient, and still fails at once on a real `404`, which is how
+  the build says BtbN rotated the ffmpeg branch.
+
 ## [2.10.8] - 2026-09-14
 
 ### Added

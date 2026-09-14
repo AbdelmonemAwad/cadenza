@@ -72,7 +72,15 @@ try_fetch() {
     info "downloading $(basename "${dest}") ..."
     mkdir -p "$(dirname "${dest}")"
     # -f so an HTML error page is never mistaken for an archive.
-    if ! curl -fsSL --retry 3 --retry-delay 2 -o "${dest}.part" "${url}"; then
+    #
+    # Eight retries with curl's own backoff (1 s doubling to 64 s, three
+    # minutes in all), and only on what curl already treats as transient --
+    # timeouts, 408, 429 and 5xx. Not --retry-all-errors: a real 404 must
+    # fail at once, because that is how this script says BtbN rotated the
+    # ffmpeg branch. The previous three retries two seconds apart gave up
+    # inside six seconds, which is shorter than the 504 blips GitHub itself
+    # had, and one of them blocked a release until someone pressed rerun.
+    if ! curl -fsSL --retry 8 --retry-max-time 180 -o "${dest}.part" "${url}"; then
         rm -f "${dest}.part"
         return 1
     fi
