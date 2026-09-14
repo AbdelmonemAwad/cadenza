@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { api, humanBytes } from '../api/client'
 import { useI18n } from '../i18n'
 
@@ -175,6 +176,15 @@ export default function Dashboard() {
             onClick={() => run('enrich', { only_incomplete: true, limit: 300 })}>
             {t('dashboard.previewEnrich')}
           </button>
+          {/* Every quick action here is a preview, and the page used to stop
+              there: after eight releases nothing had ever been applied from
+              the interface (#74). */}
+          <p className="muted" style={{ fontSize: 12, margin: '8px 0 0' }}>
+            {t('dashboard.applyHint')}{' '}
+            <Link to="/library">{t('dashboard.goLibrary')}</Link>
+            {' · '}
+            <Link to="/organize">{t('nav.organize')}</Link>
+          </p>
         </div>
 
         <div className="card">

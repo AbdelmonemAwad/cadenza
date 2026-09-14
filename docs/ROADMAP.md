@@ -168,6 +168,15 @@ that pass covered and what it turned up.
   that both the ffmpeg and the chromaprint archive are present before it
   publishes — no corresponding source, no release.
 
+### Preview, then apply — 2.11.0
+
+- Nothing the pages offered had ever written to a library: enrichment was a
+  hard-coded preview, organizing had no page, and the dashboard's actions were
+  previews with nowhere to go. The Library page applies enrichment after a
+  confirmation, the new Organize page previews the plan and applies it, and
+  Convert opens on the engine's suggestions when a library has no legacy
+  formats. Documented with the rescan a media server needs afterwards.
+
 ---
 
 ## In progress

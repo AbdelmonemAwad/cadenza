@@ -4,6 +4,40 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.11.0] - 2026-09-14
+
+### Added
+
+- **An Organize page.** Renaming files and arranging them into the template
+  folders was a job with no page: reachable only through the API, with its
+  templates editable in Settings for a feature nobody could run. The page
+  shows the three templates, takes an optional folder scope, previews the
+  plan — from → to, what could not be planned and why, what is already in
+  place — and organizes after a confirmation that names the number of moves.
+  It says that a media server reading the same share shows the new layout
+  after a rescan. (#74)
+- **Enrichment can be applied to the library, not only previewed.** The
+  Library page's one button queued a preview and nothing else, so every
+  enrichment ever run on a real library was a dry run: after eight releases
+  the library still had 1,066 tracks with incomplete tags and 322 without
+  artwork, and nothing had changed on disk. The page now carries an
+  enrichment panel — incomplete-only scope with its count, limit, overwrite,
+  artwork, lyrics, minimum confidence — with Preview and Enrich, the latter
+  confirming the number of files first. (#74)
+
+### Changed
+
+- **Convert opens on something it can convert.** On a library with no legacy
+  formats the default selection was empty, so the start button sat disabled
+  with no explanation and the page read as "conversion does not work". It now
+  opens on the engine's suggested conversions when the legacy set is empty,
+  an empty selection reads as such, both buttons are off until something is
+  selected, and a line says to pick a format or the suggestions. (#75)
+- The dashboard's preview button says that a preview writes nothing and links
+  to the pages that apply.
+- README (en/ar) and the operations guide describe preview → apply, what each
+  real run writes, and the rescan a media server needs afterwards.
+
 ## [2.10.11] - 2026-09-14
 
 ### Fixed

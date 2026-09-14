@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api, humanBytes } from '../api/client'
 import { useI18n, type TranslationKey } from '../i18n'
 
@@ -46,11 +46,13 @@ export default function Convert() {
   const [scope, setScope] = useState<Scope>({ kind: 'legacy' })
   const [message, setMessage] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [candidatesLoaded, setCandidatesLoaded] = useState(false)
+  const autoScoped = useRef(false)
 
   const load = () => {
     api.get<PresetResponse>('/convert/presets').then(setPresets).catch(() => {})
     api.get<{ items: Candidate[] }>('/convert/candidates?limit=200')
-      .then((r) => setCandidates(r.items)).catch(() => {})
+      .then((r) => { setCandidates(r.items); setCandidatesLoaded(true) }).catch(() => {})
     api.get<CodecRow[]>('/convert/codecs').then(setCodecs).catch(() => {})
   }
 
@@ -61,10 +63,23 @@ export default function Convert() {
     return () => window.removeEventListener('cadenza:job-finished', onDone)
   }, [])
 
+  // The legacy scope is the default, and on a library with no legacy formats
+  // it is empty: the start button sat disabled with no word on why, and the
+  // page read as "conversion does not work" (#75). Open on the engine's
+  // suggestions instead when there are any. Once, not on every reload.
+  useEffect(() => {
+    if (autoScoped.current || codecs.length === 0 || !candidatesLoaded) return
+    autoScoped.current = true
+    const legacy = codecs.filter((c) => c.legacy).reduce((a, c) => a + c.count, 0)
+    if (legacy === 0 && candidates.length > 0) {
+      setScope({ kind: 'suggested', ids: candidates.map((c) => c.track_id) })
+    }
+  }, [codecs, candidates, candidatesLoaded])
+
   const scopeLabel = () => {
     if (scope.kind === 'codec') return t('convert.selectionCodec', { codec: scope.codec })
     if (scope.kind === 'suggested') return t('convert.selectionSuggested')
-    return t('convert.selectionAll')
+    return scopeCount() === 0 ? t('convert.selectionNone') : t('convert.selectionAll')
   }
 
   const scopeCount = () => {
@@ -171,7 +186,7 @@ export default function Convert() {
         </div>
 
         <div className="toolbar" style={{ marginTop: 12, marginBottom: 0 }}>
-          <button className="btn" disabled={busy || !!ffmpegMissing}
+          <button className="btn" disabled={busy || !!ffmpegMissing || !scopeCount()}
             onClick={() => submit(true)}>
             {t('convert.startPreview')}
           </button>
@@ -180,6 +195,11 @@ export default function Convert() {
             {t('convert.startConvert')}
           </button>
         </div>
+        {!ffmpegMissing && scopeCount() === 0 && (
+          <p className="muted" style={{ fontSize: 12.5, margin: '8px 0 0' }}>
+            {t('convert.emptySelectionHint')}
+          </p>
+        )}
       </div>
 
       <div className="card" style={{ marginBottom: 16 }}>

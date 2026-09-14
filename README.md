@@ -313,6 +313,31 @@ Path templates support `{albumartist}` `{artist}` `{album}` `{year}` `{track}`
 {albumartist}/{year} - {album}/{track:02d} - {title}
 ```
 
+## Preview, then apply
+
+Every job that writes to the library comes in two forms, and each page offers
+both. **Preview** queues a dry run and shows what would change. The second
+button — **Enrich**, **Organize**, **Start conversion**, **Move to
+quarantine** — asks for confirmation and queues the real run. A preview never
+writes a file, so a library that has only ever been previewed looks exactly as
+it did, including to a media server reading the same share.
+
+| To… | Page | What the real run writes |
+| --- | --- | --- |
+| Fill in tags, artwork and lyrics | Library → *Enrich metadata* | Tags into the files, embedded artwork and `cover.jpg` beside them, `.lrc` lyrics — each as switched on under Settings |
+| Rename files and arrange folders | Organize | Moves each file to the folder its template gives it, carries `.lrc`/`.cue`/`.log` companions and the album cover along, removes emptied folders |
+| Change formats | Convert | New files written by FFmpeg; the original is kept, or moved to quarantine when you choose to replace it |
+| Remove duplicates | Duplicates | Moves the losing copies to quarantine |
+
+The dashboard's quick actions are previews only.
+
+After a real run, have your media server rescan the folder. In Plex, open the
+library's **⋯** menu and choose **Scan Library Files**; choose **Refresh All
+Metadata** as well if Plex should read the new tags and artwork, which it does
+only when the library's *Prefer local metadata* option is on — otherwise Plex
+keeps its own names and covers. Jellyfin and DSM Audio Station rescan from
+their library settings.
+
 ## Safety model
 
 This software operates on files people cannot re-download. The design reflects

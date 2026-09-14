@@ -31,6 +31,11 @@ export default function Library() {
   const [lookup, setLookup] = useState<Lookup | null>(null)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  const [incompleteCount, setIncompleteCount] = useState<number | null>(null)
+  const [enrich, setEnrich] = useState({
+    incompleteOnly: true, limit: 500, overwrite: false,
+    artwork: true, lyrics: true, minConfidence: 0.55,
+  })
 
   const load = () => {
     const params = new URLSearchParams({ limit: String(PAGE), offset: String(offset) })
@@ -42,6 +47,32 @@ export default function Library() {
     api.get<{ total: number; items: Track[] }>(`/library/tracks?${params}`)
       .then((r) => { setItems(r.items); setTotal(r.total) })
       .catch((e) => setMessage(e.message))
+    api.get<{ total: number }>('/library/tracks?incomplete_tags=true&limit=1')
+      .then((r) => setIncompleteCount(r.total))
+      .catch(() => setIncompleteCount(null))
+  }
+
+  // The one library-wide button posted dry_run: true and nothing else, so
+  // every enrichment ever run on a real library was a preview, and the only
+  // real write the page offered was the inspector's one track at a time (#74).
+  const runEnrich = async (dryRun: boolean) => {
+    const scoped = enrich.incompleteOnly && incompleteCount !== null
+      ? Math.min(incompleteCount, enrich.limit) : enrich.limit
+    if (!dryRun && !confirm(t('library.enrichConfirm', { count: n(scoped) }))) return
+    setBusy(true)
+    setMessage(null)
+    try {
+      const r = await api.post<{ job_id: number }>('/metadata/enrich', {
+        only_incomplete: enrich.incompleteOnly, limit: enrich.limit,
+        overwrite: enrich.overwrite, artwork: enrich.artwork, lyrics: enrich.lyrics,
+        min_confidence: enrich.minConfidence, dry_run: dryRun,
+      })
+      setMessage(t('jobs.runQueued', { id: r.job_id }))
+    } catch (e) {
+      setMessage((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
   }
 
   // Reload when a job finishes, not only when the filter changes. This page
@@ -86,13 +117,65 @@ export default function Library() {
         <button className="btn" onClick={() => api.post('/jobs', { kind: 'scan', params: {} })}>
           {t('library.scan')}
         </button>
-        <button className="btn primary"
-          onClick={() => api.post('/metadata/enrich', { only_incomplete: true, dry_run: true })}>
-          {t('library.enrichIncomplete')}
-        </button>
       </div>
 
       {message && <div className="banner">{message}</div>}
+
+      <div className="card" style={{ marginBottom: 16 }}>
+        <h3>{t('library.enrichTitle')}</h3>
+        <p className="muted" style={{ fontSize: 12.5 }}>{t('library.enrichIntro')}</p>
+        <div className="grid cols-3">
+          <div>
+            <label className="check">
+              <input type="checkbox" checked={enrich.incompleteOnly}
+                onChange={(e) => setEnrich({ ...enrich, incompleteOnly: e.target.checked })} />
+              {t('library.enrichIncompleteOnly')}
+            </label>
+            {incompleteCount !== null && (
+              <p className="muted" style={{ fontSize: 12, margin: 0 }}>
+                {t('library.enrichIncompleteCount', { count: n(incompleteCount) })}
+              </p>
+            )}
+            <label className="check" style={{ marginTop: 8 }}>
+              <input type="checkbox" checked={enrich.overwrite}
+                onChange={(e) => setEnrich({ ...enrich, overwrite: e.target.checked })} />
+              {t('library.enrichOverwrite')}
+            </label>
+          </div>
+          <div>
+            <label className="check">
+              <input type="checkbox" checked={enrich.artwork}
+                onChange={(e) => setEnrich({ ...enrich, artwork: e.target.checked })} />
+              {t('library.enrichArtwork')}
+            </label>
+            <label className="check" style={{ marginTop: 8 }}>
+              <input type="checkbox" checked={enrich.lyrics}
+                onChange={(e) => setEnrich({ ...enrich, lyrics: e.target.checked })} />
+              {t('library.enrichLyrics')}
+            </label>
+          </div>
+          <div className="grid cols-2">
+            <label className="field">
+              <span>{t('library.enrichLimit')}</span>
+              <input type="number" min={1} max={5000} value={enrich.limit}
+                onChange={(e) => setEnrich({ ...enrich, limit: Math.max(1, Number(e.target.value) || 1) })} />
+            </label>
+            <label className="field">
+              <span>{t('library.enrichMinConfidence')}</span>
+              <input type="number" min={0.3} max={1} step={0.05} value={enrich.minConfidence}
+                onChange={(e) => setEnrich({ ...enrich, minConfidence: Number(e.target.value) || 0.55 })} />
+            </label>
+          </div>
+        </div>
+        <div className="toolbar" style={{ marginTop: 12, marginBottom: 0 }}>
+          <button className="btn" disabled={busy} onClick={() => runEnrich(true)}>
+            {t('library.enrichPreview')}
+          </button>
+          <button className="btn primary" disabled={busy} onClick={() => runEnrich(false)}>
+            {t('library.enrichApply')}
+          </button>
+        </div>
+      </div>
 
       <div className="toolbar">
         <input type="text" placeholder={t('library.searchPlaceholder')} value={query}

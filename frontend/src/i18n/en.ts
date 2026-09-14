@@ -25,6 +25,7 @@ const en = {
     dashboard: 'Dashboard',
     library: 'Library',
     duplicates: 'Duplicates',
+    organize: 'Organize',
     convert: 'Convert',
     quarantine: 'Quarantine',
     apple: 'Apple Music',
@@ -55,6 +56,8 @@ const en = {
     noLyrics: 'Missing lyrics',
     incompleteTags: 'Incomplete tags (< 85%)',
     previewEnrich: 'Preview metadata enrichment',
+    applyHint: 'A preview writes nothing. Enrichment is applied from the Library page, folders are arranged from the Organize page.',
+    goLibrary: 'Open Library',
     formatBreakdown: 'Format breakdown',
     format: 'Format',
     files: 'Files',
@@ -80,7 +83,23 @@ const en = {
     title: 'Library',
     trackCount: '{count} tracks',
     scan: 'Scan',
-    enrichIncomplete: 'Enrich incomplete (preview)',
+    enrichTitle: 'Enrich metadata',
+    enrichIntro:
+      'Looks each track up at the configured sources and writes the confident result — ' +
+      'tags, artwork and lyrics, as switched on under Settings. Preview first: nothing is ' +
+      'written until you choose Enrich.',
+    enrichIncompleteOnly: 'Only tracks with incomplete tags',
+    enrichIncompleteCount: '{count} tracks have incomplete tags',
+    enrichLimit: 'Tracks per run',
+    enrichOverwrite: 'Overwrite tags that already have a value',
+    enrichArtwork: 'Fetch artwork',
+    enrichLyrics: 'Fetch lyrics',
+    enrichMinConfidence: 'Minimum confidence',
+    enrichPreview: 'Preview',
+    enrichApply: 'Enrich',
+    enrichConfirm:
+      'Write metadata to up to {count} files? Tags, artwork and lyrics are written as set ' +
+      'in Settings, and every write is recorded in the activity log.',
     searchPlaceholder: 'Search by title, artist or album…',
     filterAll: 'All files',
     filterIncomplete: 'Incomplete tags',
@@ -178,6 +197,10 @@ const en = {
     selectionAll: 'Legacy formats only',
     selectionCodec: 'All files using: {codec}',
     selectionSuggested: 'All suggested files',
+    selectionNone: 'Nothing selected',
+    emptySelectionHint:
+      'Choose a format from the table below, or the suggested conversions, and the buttons ' +
+      'come on.',
     limit: 'Maximum files per run',
     startPreview: 'Preview conversion',
     startConvert: 'Start conversion',
@@ -196,6 +219,45 @@ const en = {
   // Preset copy lives here rather than in the API response so both languages
   // read naturally. The backend still ships an English description for
   // API consumers and as a fallback for presets added later.
+  organize: {
+    title: 'Organize',
+    subtitle: 'Rename files and arrange them into folders from the templates in Settings',
+    rescanNote:
+      'Cadenza moves the files. A media server reading the same share — Plex, Jellyfin, ' +
+      'Audio Station — shows the new layout after it rescans the folder.',
+    templatesTitle: 'Templates',
+    templateAlbum: 'Album tracks',
+    templateCompilation: 'Compilations',
+    templateSingle: 'Singles',
+    editInSettings: 'Change the templates in Settings',
+    scopeTitle: 'Scope',
+    scopeHint: 'Leave empty for the whole library, or limit the run to one folder.',
+    scopePlaceholder: 'Whole library',
+    browse: 'Browse…',
+    clear: 'Clear',
+    preview: 'Preview',
+    apply: 'Organize',
+    confirm:
+      'Move {count} files into the template folders? Every move is recorded in the activity ' +
+      'log with its source and destination.',
+    confirmNoPreview:
+      'Organize without a preview? Run a preview first to see what would move — or continue.',
+    running: 'Job #{id} is running — the result appears here when it finishes.',
+    planTitle: 'What would move',
+    resultTitle: 'What moved',
+    planned: '{count} files would move',
+    moved: '{count} files moved',
+    unchanged: '{count} already in place',
+    notPlanned: '{count} could not be planned',
+    failed: '{count} failed',
+    stopped: 'The job was stopped before the end.',
+    nothingToDo: 'Everything is already where the templates put it.',
+    colFrom: 'From',
+    colTo: 'To',
+    colReason: 'Reason',
+    previewTruncated: 'Showing the first {count} of the plan.',
+  },
+
   presets: {
     flac: {
       label: 'FLAC (level 8)',
