@@ -61,6 +61,8 @@ class _FakeOutcome:
     artwork: None = None
     lyrics: None = None
     error: str | None = None
+    unmatched: bool = False
+    reason: str | None = None
 
 
 async def test_enrichment_commits_after_every_track(monkeypatch: pytest.MonkeyPatch) -> None:

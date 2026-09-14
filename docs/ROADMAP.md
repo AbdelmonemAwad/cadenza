@@ -153,6 +153,8 @@ that pass covered and what it turned up.
 - 2.10.8: the catalogue works with no key at all through Apple's key-free
   search — matching, artwork, track numbers, release dates, links — and the
   page says the Developer Program is needed only for playlists.
+- 2.10.10: enrichment reports `unmatched` apart from `failed`, and points at
+  AcoustID when most tracks could not be identified by name.
 
 ---
 

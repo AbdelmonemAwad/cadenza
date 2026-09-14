@@ -576,7 +576,7 @@ async def handle_enrich(job_id: int, params: dict, dry_run: bool,
     track_ids: list[int] | None = params.get("track_ids")
     limit = int(params.get("limit", 500))
     results: list[dict] = []
-    applied = skipped = failed = 0
+    applied = skipped = failed = unmatched = 0
 
     async with session_scope() as s:
         stmt = select(Track).where(Track.status == TrackStatus.ACTIVE)
@@ -612,6 +612,11 @@ async def handle_enrich(job_id: int, params: dict, dry_run: bool,
                 await s.commit()
                 if r.error:
                     failed += 1
+                elif r.unmatched:
+                    # Nothing confident enough from any source. An outcome,
+                    # not an error: 234 of 300 on a real library once read
+                    # as "234 failed" in red when nothing had failed at all.
+                    unmatched += 1
                 elif r.applied or (dry_run and r.changed_fields):
                     applied += 1
                 else:
@@ -622,14 +627,23 @@ async def handle_enrich(job_id: int, params: dict, dry_run: bool,
                     "changed": {k: list(v) for k, v in r.changed_fields.items()},
                     "sources": r.field_sources, "conflicts": r.conflicts,
                     "artwork": r.artwork, "lyrics": r.lyrics, "error": r.error,
+                    "unmatched": r.unmatched, "reason": r.reason,
                 })
                 if i % 5 == 0:
                     await runner.progress(job_id, i, total, t.filename)
         finally:
             await service.aclose()
 
-    return {"dry_run": dry_run, "processed": len(results), "applied": applied,
-            "skipped": skipped, "failed": failed, "items": results[:300]}
+    out = {"dry_run": dry_run, "processed": len(results), "applied": applied,
+           "unmatched": unmatched, "skipped": skipped, "failed": failed,
+           "items": results[:300]}
+    # The tracks a name lookup cannot place are exactly the ones a fingerprint
+    # can. Said here, next to the number, rather than in a document.
+    if unmatched > applied and not get_settings().acoustid_api_key:
+        out["hint"] = ("Most of these could not be identified by name. A free AcoustID "
+                       "key identifies a recording from its audio; add it under "
+                       "Settings -> Provider API keys and run this again.")
+    return out
 
 
 async def handle_organize(job_id: int, params: dict, dry_run: bool,
