@@ -244,7 +244,7 @@ Apple Music في `config/apple_user_token.json`. احمِ مجلد الإعدا�
 |---|---|---|
 | [MusicBrainz](https://musicbrainz.org) | لا (بريد تواصل) | المعرّفات والعناوين المرجعية |
 | [AcoustID](https://acoustid.org) | مجاني | التعرّف على التسجيل من الصوت وحده |
-| [Apple Music](https://developer.apple.com/musickit/) | عضوية مطوّر | الأغلفة و ISRC وأرقام المسارات |
+| [Apple Music](https://developer.apple.com/musickit/) | لا للكتالوج (المطابقة والأغلفة وأرقام المسارات والروابط)؛ عضوية المطوّر لقوائم تشغيلك ورمز ISRC فقط | الأغلفة وأرقام المسارات وتواريخ الإصدار وروابط Apple Music |
 | [Discogs](https://www.discogs.com/developers) | رمز مجاني | سنوات الطبعات والإصدارات النادرة والإقليمية |
 | [Last.fm](https://www.last.fm/api) | مجاني | التصنيفات وتصحيح أسماء الفنانين |
 | [LRCLIB](https://lrclib.net) | لا | الكلمات المزامنة |

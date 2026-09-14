@@ -414,9 +414,17 @@ session leaked.
 
 ### Linking Apple Music
 
-Apple Music is optional, and it is the one integration with a prerequisite that
-costs money: MusicKit needs an [Apple Developer Program](https://developer.apple.com/programs/)
-membership. With one:
+Apple's catalogue needs no key at all. Out of the box Cadenza matches your
+library against it, fetches artwork, track numbers, release dates and "open in
+Apple Music" links through Apple's key-free search (about twenty lookups a
+minute), and the Apple Music page's **Match library** works on a fresh install.
+That can be switched off in **Settings → Apple Music** if you would rather
+Apple were not consulted.
+
+Only your own library — playlists, and linking an account — needs more, and
+that is the one prerequisite in Cadenza that costs money: MusicKit needs an
+[Apple Developer Program](https://developer.apple.com/programs/) membership.
+With one:
 
 1. **Team ID** — on your [membership page](https://developer.apple.com/account).
 2. **Key ID and the `.p8` file** — create a key under

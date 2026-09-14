@@ -269,9 +269,19 @@ const en = {
     title: 'Apple Music',
     subtitle: 'Library matching and playlist sync',
     notConfigured:
-      'Apple Music is not configured. In Settings → Apple Music, enter your Team ID and '
-      + 'Key ID and upload the .p8 signing key. This needs an Apple Developer Program '
-      + 'membership; the Settings page says where each value comes from.',
+      'Apple Music is off: no MusicKit key is configured and the key-free catalogue is '
+      + 'switched off in Settings → Apple Music. Turn the catalogue on, or enter a key.',
+    catalogueMusicKit: 'Catalogue via MusicKit',
+    catalogueItunes: 'Catalogue without a key',
+    catalogueOff: 'Off',
+    itunesHint:
+      "Artwork, track numbers, release dates and Apple Music links come from Apple's "
+      + 'key-free catalogue (about 20 lookups a minute). ISRC and your playlists need a '
+      + 'MusicKit key.',
+    libraryNeedsKey:
+      'Linking an account, and with it your playlists, needs a MusicKit key from the '
+      + 'Apple Developer Program. The catalogue works without one.',
+    developerProgram: 'Apple Developer Program',
     linkExplainer:
       "Linking opens Apple's own sign-in window. Cadenza never sees your Apple ID password, "
       + 'two-factor is handled by Apple, and what comes back is a token for your library that '
@@ -488,10 +498,14 @@ const en = {
     providerDiscogs: 'Pressing years and rare or regional releases. Free personal token.',
     providerLastfm: 'Genres and corrections to misspelled artist names. Free API account.',
     appleGuide:
-      'Cadenza talks to Apple Music through MusicKit, which needs an Apple Developer Program '
-      + 'membership. The Team ID is on your membership page; the Key ID and the .p8 file come '
-      + 'from a MusicKit key you create under Keys. These only sign the developer token — none '
-      + 'of them is your Apple ID password, which Cadenza never asks for.',
+      "Matching, artwork, track numbers and Apple Music links work with no key at all, "
+      + "through Apple's key-free catalogue. A MusicKit key is needed only for your own "
+      + 'library and playlists, and it needs an Apple Developer Program membership: the '
+      + 'Team ID is on your membership page; the Key ID and the .p8 file come from a '
+      + 'MusicKit key you create under Keys. These only sign the developer token — none of '
+      + 'them is your Apple ID password, which Cadenza never asks for.',
+    appleItunesCatalogue:
+      "Use Apple's key-free catalogue (iTunes Search) when no MusicKit key is configured",
     appleLinkProgram: 'Developer Program',
     appleLinkTeam: 'Membership details (Team ID)',
     appleLinkKeys: 'Keys (create a MusicKit key)',

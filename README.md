@@ -291,7 +291,7 @@ is never auto-actioned — it waits for you.
 |---|---|---|
 | [MusicBrainz](https://musicbrainz.org) | No (contact e-mail) | Identifiers, canonical titles |
 | [AcoustID](https://acoustid.org) | Free | Identifying a recording from audio alone |
-| [Apple Music](https://developer.apple.com/musickit/) | Developer Program | Artwork, ISRC, track numbers |
+| [Apple Music](https://developer.apple.com/musickit/) | No for the catalogue (matching, artwork, track numbers, links); Developer Program only for your playlists and ISRC | Artwork, track numbers, release dates, Apple Music links |
 | [Discogs](https://www.discogs.com/developers) | Free token | Pressing years, rare and regional releases |
 | [Last.fm](https://www.last.fm/api) | Free | Genres, correcting misspelled artists |
 | [LRCLIB](https://lrclib.net) | No | Synced lyrics |

@@ -150,6 +150,9 @@ that pass covered and what it turned up.
   at HTTPS through DSM's reverse proxy, which the install guide walks through.
 - Still to confirm on hardware: whether Apple's window hands the token back to
   a plain `http://` origin at all. That needs a Developer Program account.
+- 2.10.8: the catalogue works with no key at all through Apple's key-free
+  search — matching, artwork, track numbers, release dates, links — and the
+  page says the Developer Program is needed only for playlists.
 
 ---
 
