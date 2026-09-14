@@ -4,6 +4,23 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.10.10] - 2026-09-14
+
+### Fixed
+
+- **Enrichment no longer calls a track it could not identify a failure.** The
+  first run to complete on a real library reported `applied 66 · failed 234`,
+  and every one of the 234 was "confidence too low; nothing was changed" —
+  no provider had a confident match, which is an outcome, not an error. The
+  result now counts `applied`, `unmatched`, `skipped` and `failed`
+  separately, `failed` is reserved for something that actually went wrong,
+  each unmatched item carries its reason, and when most tracks went
+  unmatched with no AcoustID key configured the result says that a free
+  AcoustID key identifies a recording from its audio.
+- **Settings shows Apple Music as on when its catalogue answers.** The
+  providers list tested only for a MusicKit key, so it showed Apple as off
+  while the key-free catalogue introduced in 2.10.8 was matching the library.
+
 ## [2.10.9] - 2026-09-14
 
 ### Changed

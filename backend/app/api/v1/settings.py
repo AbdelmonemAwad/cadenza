@@ -16,6 +16,7 @@ from app.core.settings_policy import (
     validate_patch,
 )
 from app.core.transcode import ffmpeg_available
+from app.providers.applemusic import AppleMusicProvider
 
 router = APIRouter()
 
@@ -103,8 +104,11 @@ async def health() -> dict:
             "musicbrainz": True,
             "discogs": bool(s.discogs_token),
             "lastfm": bool(s.lastfm_api_key),
-            "applemusic": bool(s.apple_team_id and s.apple_key_id
-                               and s.apple_key_file.is_file()),
+            # Whether Apple answers lookups at all -- through a MusicKit key or
+            # the key-free catalogue -- not whether a key is present. The key
+            # test alone showed Apple as off in Settings while the catalogue
+            # was busy matching the library.
+            "applemusic": AppleMusicProvider(None).enabled,
             "lrclib": True,
         },
         "safety": {

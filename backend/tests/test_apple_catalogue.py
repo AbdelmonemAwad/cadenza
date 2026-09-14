@@ -121,7 +121,8 @@ async def test_album_tracks_come_back_in_musickit_shape(keyless, monkeypatch) ->
                                        "url": "https://music.apple.com/x?i=2"}
 
 
-async def test_status_reports_the_catalogue_and_the_library_separately(app_client) -> None:
+async def test_status_reports_the_catalogue_and_the_library_separately(app_client,
+                                                                          monkeypatch) -> None:
     from app.core.auth import Credentials, hash_password, save_credentials
 
     save_credentials(Credentials(username="apple-probe", password_hash=hash_password("pw")))
@@ -135,3 +136,9 @@ async def test_status_reports_the_catalogue_and_the_library_separately(app_clien
 
     token = app_client.get("/api/v1/apple/developer-token")
     assert token.status_code == 400 and "Developer Program" in token.json()["detail"]
+
+    # The providers list in Settings must agree with what actually answers:
+    # it showed Apple as off while the key-free catalogue was matching tracks.
+    assert app_client.get("/api/v1/settings/health").json()["providers"]["applemusic"] is True
+    monkeypatch.setattr(get_settings(), "apple_itunes_catalogue", False)
+    assert app_client.get("/api/v1/settings/health").json()["providers"]["applemusic"] is False

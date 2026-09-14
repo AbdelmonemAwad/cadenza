@@ -30,7 +30,14 @@ class EnrichResult:
     conflicts: dict[str, list[str]] = field(default_factory=dict)
     artwork: str | None = None
     lyrics: str | None = None
+    # `error` is for something that went wrong: a provider that could not be
+    # reached, a file that could not be read or written. A lookup that worked
+    # and simply found nothing confident enough is `unmatched`, with the
+    # reason alongside -- it is an outcome, not a failure, and the job counts
+    # it under its own name (issue #68).
     error: str | None = None
+    unmatched: bool = False
+    reason: str | None = None
 
 
 class EnrichmentService:
@@ -73,9 +80,10 @@ class EnrichmentService:
         result.conflicts = merged.conflicts
 
         if merged.overall_confidence < min_confidence:
-            result.error = (f"confidence too low "
-                            f"({merged.overall_confidence:.2f} < {min_confidence:.2f}); "
-                            "nothing was changed")
+            result.unmatched = True
+            result.reason = (f"no confident match "
+                             f"({merged.overall_confidence:.2f} < {min_confidence:.2f}); "
+                             "nothing was changed")
             return result
 
         current: TagSet = read_tags(path)
