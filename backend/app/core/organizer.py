@@ -11,6 +11,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -99,6 +100,40 @@ class Organizer:
     def __init__(self, session: AsyncSession) -> None:
         self.s = get_settings()
         self.session = session
+        # Track numbers found in the audit log for tracks whose tags and
+        # current filename carry none; filled by recover_numbers().
+        self._recovered: dict[int, int] = {}
+
+    async def recover_numbers(self, tracks: list[Track]) -> dict[int, int]:
+        """The track number an earlier run threw away, back from the audit log.
+
+        Before 2.11.2 a track with no track-number tag was renamed to
+        `00 - Title`, and the number its old name carried went with the old
+        name -- 591 files on one library. Every move wrote an audit row with
+        the source path, and the earliest one for a track still starts with
+        the number. A track the library never had a number for gets none.
+        """
+        self._recovered = {}
+        wanted = [t.id for t in tracks
+                  if not t.track_no and not number_from_filename(t.path)]
+        if not wanted or self.session is None:
+            return self._recovered
+        for start in range(0, len(wanted), 500):
+            chunk = wanted[start:start + 500]
+            rows = (await self.session.execute(
+                select(AuditLog.track_id, AuditLog.src_path)
+                .where(AuditLog.action == "organize",
+                       AuditLog.track_id.in_(chunk),
+                       AuditLog.src_path.is_not(None))
+                .order_by(AuditLog.ts.asc(), AuditLog.id.asc())
+            )).all()
+            for track_id, src in rows:
+                if track_id in self._recovered:
+                    continue
+                n = number_from_filename(src)
+                if n:
+                    self._recovered[track_id] = n
+        return self._recovered
 
     # ---------------- Path rendering ----------------
 
@@ -115,7 +150,8 @@ class Organizer:
         # A field the track has no value for leaves the template rather than
         # rendering a default: the preview once planned "15 - Can't C Me.flac"
         # as "00 - Can't C Me.flac" and every year-less album as "0000 - ...".
-        track_no = track.track_no or number_from_filename(track.path)
+        track_no = (track.track_no or number_from_filename(track.path)
+                    or self._recovered.get(track.id))
         if not track_no:
             template = drop_field(template, "track")
         if not track.year:

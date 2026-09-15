@@ -332,7 +332,7 @@ it did, including to a media server reading the same share.
 | --- | --- | --- |
 | Fill in tags, artwork and lyrics | Library → *Enrich metadata* | Tags into the files, embedded artwork and `cover.jpg` beside them, `.lrc` lyrics — each as switched on under Settings |
 | Rename files and arrange folders | Organize | Moves each file to the folder its template gives it, carries `.lrc`/`.cue`/`.log` companions and the album cover along, removes emptied folders |
-| Change formats | Convert | New files written by FFmpeg; the original is kept, or moved to quarantine when you choose to replace it |
+| Change formats | Convert | New files written by FFmpeg next to the originals, which stay unless you choose to replace them (then they go to quarantine). The Jobs page counts the files as they finish, and the page reports what was written when the job ends |
 | Remove duplicates | Duplicates | Moves the losing copies to quarantine |
 
 The dashboard's quick actions are previews only.

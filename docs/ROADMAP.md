@@ -183,6 +183,9 @@ that pass covered and what it turned up.
 - 2.11.2: organizing writes no placeholder for a missing tag — the field
   leaves the name with its separator, and a track number is read from the
   filename when the tag has none.
+- 2.11.3: conversion reports each file as it finishes, stops when asked, and
+  the Convert page reports what the job wrote; organizing recovers from the
+  audit log the numbers an earlier run replaced with `00`.
 
 ---
 

@@ -4,6 +4,31 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.11.3] - 2026-09-15
+
+### Fixed
+
+- **Conversion reports each file as it finishes, can be stopped, and shows
+  its result.** A conversion of 1,610 FLAC files ran four hours and read
+  `0/1610` on the Jobs page from the first minute to the last and after,
+  the Stop button could not stop it, and the Convert page never mentioned
+  the job again — it was taken, twice, for a run that had done nothing,
+  while every file had been written. The transcoder now reports per file
+  and stops between files; a stopped run says how many files it did not
+  attempt, apart from failures; the result carries what was written and
+  whether the originals were kept; and the Convert page follows the job it
+  queued and reports it — "N files added beside the originals, X GB" when
+  kept, "X GB freed, N originals moved to quarantine" when replaced — with
+  the rescan a media server needs. (#81)
+- **Organizing recovers the numbers an earlier run replaced with `00`.** The
+  organize run made with 2.11.0 renamed 591 files to `00 - Title` where the
+  track-number tag was missing, and the number their old names carried went
+  with the old names. Each move wrote an audit row with its source, so the
+  organizer now consults the audit log for a track whose tags and current
+  filename carry no number: `00 - Can’t C Me.flac` plans as
+  `15 - Can’t C Me.flac` again, and a name the library never had a number
+  for stays `Title`. (#82)
+
 ## [2.11.2] - 2026-09-15
 
 ### Fixed

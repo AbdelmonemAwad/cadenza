@@ -209,7 +209,17 @@ const en = {
     confirmDelete:
       'Keep-original is OFF: source files will be deleted after each successful '
       + 'conversion. This cannot be undone. Continue?',
-    started: 'Conversion job started — follow it on the Jobs page.',
+    started: 'Conversion job started — its progress and result appear below.',
+    running: 'Job #{id} is running — {done} of {total} files done. The result appears here when it finishes.',
+    previewTitle: 'What would be converted',
+    resultTitle: 'What was converted',
+    wouldConvert: '{count} files would be converted — nothing was written',
+    resultConverted: '{count} files converted',
+    resultFailed: '{count} failed',
+    resultSkipped: '{count} not attempted',
+    keptNote: '{count} new files were added beside the originals, {size} in all. The originals were kept.',
+    replacedNote: '{size} freed. {count} originals were moved to quarantine, where they can be restored.',
+    colError: 'Error',
     previewStarted: 'Preview started — no file will be written.',
     noCandidates: 'Nothing needs converting. Your formats are already in good shape.',
     estimatedSaving: 'Saved {size}',

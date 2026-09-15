@@ -662,6 +662,7 @@ async def handle_organize(job_id: int, params: dict, dry_run: bool,
         tracks = list((await s.execute(stmt)).scalars().all())
 
         organizer = Organizer(s)
+        await organizer.recover_numbers(tracks)
         plans = organizer.plan(tracks, params.get("template"))
 
         movable = [p for p in plans if p.changed]
@@ -757,8 +758,18 @@ async def handle_convert(job_id: int, params: dict, dry_run: bool,
     by_path = {t.path: t.id for t in tracks}
     items = [(Path(t.path), preset) for t in tracks if Path(t.path).is_file()]
     await runner.progress(job_id, 0, len(items), f"preset={preset}")
+
+    # Reported per file, and stoppable between files. The one progress call
+    # used to be the line above: a four-hour conversion of 1,610 files read
+    # 0/1610 the whole way through and after, and was taken for a run that
+    # had done nothing (#81).
+    async def on_progress(done: int, total: int, current: str) -> None:
+        await runner.progress(job_id, done, total, current)
+
     results = await transcoder.batch(items, dry_run=dry_run,
-                                     keep_original=keep_original, dest_dir=dest_dir)
+                                     keep_original=keep_original, dest_dir=dest_dir,
+                                     progress=on_progress,
+                                     should_stop=lambda: runner.is_cancelled(job_id))
 
     # keep_original=false used to mean the transcoder called src.unlink(): the
     # one deletion in the whole project that skipped quarantine, ignored
@@ -786,13 +797,23 @@ async def handle_convert(job_id: int, params: dict, dry_run: bool,
             log.warning("kept original %s, could not quarantine it: %s", r.src, exc)
 
     converted = sum(1 for r in results if r.ok)
+    # A file the batch never reached because the job was stopped is not a
+    # failure, and is reported apart from one.
+    not_attempted = sum(1 for r in results if not r.ok and r.skipped_reason)
     return {
         "dry_run": dry_run, "preset": preset, "total": len(results),
-        "converted": converted, "failed": len(results) - converted,
+        "converted": converted, "failed": len(results) - converted - not_attempted,
+        "skipped": not_attempted, "stopped": not_attempted > 0,
         "saved_bytes": sum(r.saved_bytes for r in results),
+        # What the run added to the disk. `saved_bytes` is source minus output
+        # and reads the same whether the originals were kept or replaced;
+        # with them kept nothing was saved and the library grew by this much.
+        "written_bytes": 0 if dry_run else sum(r.dst_bytes for r in results if r.ok),
+        "originals_kept": keep_original,
         "sources_quarantined": replaced,
         "sources_kept_after_error": quarantine_failed,
         "items": [{"src": r.src, "dst": r.dst, "ok": r.ok, "error": r.error,
+                   "skipped_reason": r.skipped_reason,
                    "src_bytes": r.src_bytes, "dst_bytes": r.dst_bytes}
                   for r in results[:200]],
     }

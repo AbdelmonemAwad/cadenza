@@ -11,6 +11,7 @@ import logging
 import secrets
 import shutil
 import subprocess
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -100,6 +101,10 @@ class TranscodeResult:
     @property
     def saved_bytes(self) -> int:
         return max(0, self.src_bytes - self.dst_bytes) if self.ok else 0
+
+
+ProgressCb = Callable[[int, int, str], Awaitable[None]] | None
+StopCb = Callable[[], bool] | None
 
 
 class Transcoder:
@@ -226,18 +231,45 @@ class Transcoder:
 
     async def batch(self, items: list[tuple[Path, str]], *, dry_run: bool = False,
                     keep_original: bool = True, dest_dir: Path | None = None,
-                    concurrency: int | None = None) -> list[TranscodeResult]:
+                    concurrency: int | None = None,
+                    progress: ProgressCb = None,
+                    should_stop: StopCb = None) -> list[TranscodeResult]:
+        """Convert every item, a few at a time, reporting each as it finishes.
+
+        `progress` and `should_stop` exist because a batch over a whole format
+        runs for hours: 1,610 FLAC files took four. Without the first, the
+        Jobs page read 0/1610 from the first minute to the last and after,
+        and the run was taken for one that had done nothing. Without the
+        second the Stop button could not stop it. A stopped batch returns the
+        files it did not attempt as results with `skipped_reason`, so the
+        caller can say how many, and in the original order.
+        """
         # Half the worker count: ffmpeg is already multi-threaded, and the NAS
         # still has to serve files while this runs.
         sem = asyncio.Semaphore(concurrency or max(1, self.s.workers // 2))
+        total = len(items)
+        results: list[TranscodeResult | None] = [None] * total
+        done = 0
+        stopped = False
 
-        async def one(src: Path, preset: str) -> TranscodeResult:
+        async def one(index: int, src: Path, preset: str) -> None:
+            nonlocal done, stopped
             async with sem:
-                return await self.transcode_async(
+                if stopped or (should_stop is not None and should_stop()):
+                    stopped = True
+                    results[index] = TranscodeResult(
+                        str(src), None, False, preset,
+                        skipped_reason="stopped before it was attempted")
+                    return
+                results[index] = await self.transcode_async(
                     src, preset, dry_run=dry_run, keep_original=keep_original,
                     dest_dir=dest_dir)
+            done += 1
+            if progress is not None:
+                await progress(done, total, src.name)
 
-        return list(await asyncio.gather(*(one(s, p) for s, p in items)))
+        await asyncio.gather(*(one(i, s, p) for i, (s, p) in enumerate(items)))
+        return [r for r in results if r is not None]
 
 
 def _unique_sibling(dst: Path, limit: int = 200) -> Path | None:

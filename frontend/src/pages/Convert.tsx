@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, humanBytes } from '../api/client'
 import { useI18n, type TranslationKey } from '../i18n'
 
@@ -15,6 +15,20 @@ type Candidate = {
 }
 type CodecRow = {
   codec: string; count: number; bytes: number; lossless: boolean; legacy: boolean
+}
+
+type ConvertItem = {
+  src: string; dst: string | null; ok: boolean; error: string | null
+  skipped_reason: string | null; src_bytes: number; dst_bytes: number
+}
+type ConvertResult = {
+  dry_run: boolean; preset: string; total: number; converted: number; failed: number
+  skipped: number; stopped: boolean; saved_bytes: number; written_bytes: number
+  originals_kept: boolean; sources_quarantined: number; items: ConvertItem[]
+}
+type JobRow = {
+  id: number; state: string; dry_run: boolean; processed: number; total: number
+  result: ConvertResult | null; error: string | null
 }
 
 type Scope =
@@ -48,6 +62,31 @@ export default function Convert() {
   const [busy, setBusy] = useState(false)
   const [candidatesLoaded, setCandidatesLoaded] = useState(false)
   const autoScoped = useRef(false)
+  const [jobId, setJobId] = useState<number | null>(null)
+  const [job, setJob] = useState<JobRow | null>(null)
+
+  // The page used to say "follow it on the Jobs page" and never mention the
+  // job again, and the Jobs page read 0/N for the whole run: a four-hour
+  // conversion of 1,610 files was taken for one that had done nothing (#81).
+  // The job this page queued is followed here, and its result shown.
+  const refresh = useCallback((id: number) => {
+    api.get<JobRow>(`/jobs/${id}`).then(setJob).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    if (jobId === null) return
+    const onEvent = (e: Event) => {
+      const detail = (e as CustomEvent<{ job_id?: number }>).detail
+      if (detail?.job_id === jobId) refresh(jobId)
+    }
+    window.addEventListener('cadenza:job-finished', onEvent)
+    refresh(jobId)
+    const timer = setInterval(() => refresh(jobId), 5000)
+    return () => {
+      window.removeEventListener('cadenza:job-finished', onEvent)
+      clearInterval(timer)
+    }
+  }, [jobId, refresh])
 
   const load = () => {
     api.get<PresetResponse>('/convert/presets').then(setPresets).catch(() => {})
@@ -107,7 +146,9 @@ export default function Convert() {
     setBusy(true)
     setMessage(null)
     try {
-      await api.post('/convert', body)
+      const r = await api.post<{ job_id: number }>('/convert', body)
+      setJob(null)
+      setJobId(r.job_id)
       setMessage(dryRun ? t('convert.previewStarted') : t('convert.started'))
     } catch (e) {
       setMessage((e as Error).message)
@@ -117,6 +158,8 @@ export default function Convert() {
   }
 
   const ffmpegMissing = presets && !presets.ffmpeg_available
+  const finished = job !== null && job.state !== 'running' && job.state !== 'pending'
+  const result = job?.result ?? null
 
   const renderPreset = (p: Preset, lossless: boolean) => {
     const labelKey = presetKey(p.name, 'label')
@@ -201,6 +244,64 @@ export default function Convert() {
           </p>
         )}
       </div>
+
+      {job && !finished && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <p className="muted" style={{ margin: 0 }}>
+            {t('convert.running', { id: job.id, done: n(job.processed), total: n(job.total) })}
+          </p>
+        </div>
+      )}
+
+      {job && finished && job.state !== 'done' && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <div className="banner danger">{job.error ?? job.state}</div>
+        </div>
+      )}
+
+      {job && finished && job.state === 'done' && result && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <h3>{result.dry_run ? t('convert.previewTitle') : t('convert.resultTitle')}</h3>
+          <p style={{ margin: '4px 0 10px' }}>
+            <strong>
+              {result.dry_run
+                ? t('convert.wouldConvert', { count: n(result.converted) })
+                : t('convert.resultConverted', { count: n(result.converted) })}
+            </strong>
+            {result.failed > 0 && <>{' · '}{t('convert.resultFailed', { count: n(result.failed) })}</>}
+            {result.skipped > 0 && <>{' · '}{t('convert.resultSkipped', { count: n(result.skipped) })}</>}
+          </p>
+          {result.stopped && <div className="banner warn">{t('organize.stopped')}</div>}
+          {!result.dry_run && result.converted > 0 && (
+            <>
+              <p style={{ margin: '0 0 10px' }}>
+                {result.originals_kept
+                  ? t('convert.keptNote', { count: n(result.converted), size: humanBytes(result.written_bytes) })
+                  : t('convert.replacedNote', { size: humanBytes(result.saved_bytes), count: n(result.sources_quarantined) })}
+              </p>
+              <div className="banner">{t('organize.rescanNote')}</div>
+            </>
+          )}
+          {result.items.some((i) => !i.ok && !i.skipped_reason) && (
+            <table style={{ marginTop: 12 }}>
+              <thead>
+                <tr>
+                  <th>{t('duplicates.colPath')}</th>
+                  <th>{t('convert.colError')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {result.items.filter((i) => !i.ok && !i.skipped_reason).slice(0, 20).map((i) => (
+                  <tr key={i.src}>
+                    <td className="mono truncate" title={i.src} style={{ direction: 'ltr' }}>{i.src}</td>
+                    <td className="muted">{i.error ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
 
       <div className="card" style={{ marginBottom: 16 }}>
         <h3>{t('convert.byFormat')}</h3>
