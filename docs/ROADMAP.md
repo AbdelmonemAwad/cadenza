@@ -180,6 +180,9 @@ that pass covered and what it turned up.
   caller's session, and enrichment no longer holds the write lock across its
   network calls — the provider cache reads and writes through short sessions
   of its own.
+- 2.11.2: organizing writes no placeholder for a missing tag — the field
+  leaves the name with its separator, and a track number is read from the
+  filename when the tag has none.
 
 ---
 

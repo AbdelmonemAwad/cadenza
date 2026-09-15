@@ -28,6 +28,9 @@ StopCb = Callable[[], bool] | None
 # the whole Windows-hostile set regardless of the underlying filesystem.
 _ILLEGAL = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 _TRAILING = re.compile(r"[ .]+$")
+# "15 - Title", "01. Title", "07_Title", "1-05 Title" (disc-track). One to
+# three digits: a four-digit number at the start of a name is a year.
+_LEADING_NUMBER = re.compile(r"^\s*(?:\d{1,2}[-.])?(\d{1,3})[\s._-]+(?=\S)")
 _RESERVED = {"con", "prn", "aux", "nul", *(f"com{i}" for i in range(1, 10)),
              *(f"lpt{i}" for i in range(1, 10))}
 
@@ -46,6 +49,38 @@ class _SafeDict(dict):
 
     def __missing__(self, key: str) -> str:
         return "Unknown"
+
+
+def number_from_filename(path: str | Path) -> int | None:
+    """The track number a filename starts with, when the tag has none.
+
+    The first organize preview on a real library planned
+    `15 - Can't C Me.flac -> 00 - Can't C Me.flac`: the number lived in the
+    name and not in the tags, and the template's default threw it away.
+    """
+    m = _LEADING_NUMBER.match(Path(path).stem)
+    if not m:
+        return None
+    n = int(m.group(1))
+    return n if 1 <= n <= 999 else None
+
+
+def drop_field(template: str, name: str) -> str:
+    """Remove a placeholder the track has no value for, with one separator
+    beside it, so "{track:02d} - {title}" becomes "{title}" rather than
+    " - {title}", "{year} - {album}" becomes "{album}", and "{album} ({year})"
+    becomes "{album}". Never "00 - " or "0000 - ": a placeholder in a filename
+    is information thrown away and a lie written in its place."""
+    token = r"\{" + name + r"(?::[^}]*)?\}"
+    sep = r"[ \t]*[-\u2013\u2014._:]*[ \t]*"
+    for pattern in (r"[(\[]" + sep + token + sep + r"[)\]]",   # ({year})
+                    token + sep + r"(?=\S)",                      # {track} - {title}
+                    r"(?<=\S)" + sep + token,                     # {title} {year}
+                    token):
+        new, n = re.subn(pattern, "", template, count=1)
+        if n:
+            return new
+    return template
 
 
 def sanitize(component: str, max_len: int | None = None) -> str:
@@ -77,14 +112,23 @@ class Organizer:
             else:
                 template = s.path_template
 
+        # A field the track has no value for leaves the template rather than
+        # rendering a default: the preview once planned "15 - Can't C Me.flac"
+        # as "00 - Can't C Me.flac" and every year-less album as "0000 - ...".
+        track_no = track.track_no or number_from_filename(track.path)
+        if not track_no:
+            template = drop_field(template, "track")
+        if not track.year:
+            template = drop_field(template, "year")
+
         fields = _SafeDict(
             artist=sanitize(track.artist or track.albumartist or "Unknown Artist"),
             albumartist=sanitize(track.albumartist or track.artist or "Unknown Artist"),
             album=sanitize(track.album or "Unknown Album"),
             title=sanitize(track.title or Path(track.path).stem),
-            year=track.year or "0000",
+            year=track.year or "",
             genre=sanitize(track.genre or "Unknown"),
-            track=track.track_no or 0,
+            track=track_no or 0,
             disc=track.disc_no or 1,
             ext=track.ext.lstrip("."),
             codec=track.codec or "unknown",

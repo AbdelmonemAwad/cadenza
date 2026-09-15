@@ -313,6 +313,12 @@ Path templates support `{albumartist}` `{artist}` `{album}` `{year}` `{track}`
 {albumartist}/{year} - {album}/{track:02d} - {title}
 ```
 
+A field the track has no value for leaves the name together with the separator
+beside it — a track with no year goes under `Album`, not `0000 - Album`, and a
+track with no number is `Title`, not `00 - Title`. When the track-number tag
+is missing, the number at the start of the current filename is used, so
+`15 - Song.flac` keeps its 15.
+
 ## Preview, then apply
 
 Every job that writes to the library comes in two forms, and each page offers
