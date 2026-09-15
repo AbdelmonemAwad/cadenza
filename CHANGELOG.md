@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.11.2] - 2026-09-15
+
+### Fixed
+
+- **Organizing no longer writes a placeholder where a tag is missing.** The
+  first organize preview on a real library planned `15 - Can’t C Me.flac` as
+  `00 - Can’t C Me.flac` — the number was in the filename and not in the
+  tags, and `{track:02d}` rendered its default — and every year-less album as
+  a `0000 - Album` folder. A placeholder the track has no value for now leaves
+  the name together with the separator beside it (`Title`, `Album`,
+  `Album` for `{album} ({year})`), and a missing track-number tag is read from
+  the start of the current filename, so `15 - …` keeps its 15 and `1-05 …`
+  its 05; a four-digit number is a year and is not taken. (#79)
+
 ## [2.11.1] - 2026-09-14
 
 ### Fixed
