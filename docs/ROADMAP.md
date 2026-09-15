@@ -186,6 +186,8 @@ that pass covered and what it turned up.
 - 2.11.3: conversion reports each file as it finishes, stops when asked, and
   the Convert page reports what the job wrote; organizing recovers from the
   audit log the numbers an earlier run replaced with `00`.
+- 2.11.4: quarantining duplicates ends on the number it moved rather than on
+  the last multiple of twenty.
 
 ---
 
