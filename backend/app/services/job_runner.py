@@ -536,8 +536,14 @@ async def handle_dedup_apply(job_id: int, params: dict, dry_run: bool,
                 "freed_bytes": sum(row[5] for row in plan), "errors": []}
 
     touched_groups: set[int] = set()
+    # Reported every twenty files and, below the loop, for the last one:
+    # progress written only inside the loop left a job that moved all 838 of
+    # its files reading "done 820/838" (#84), and a finished job that reads
+    # short is read as one that did not finish.
+    done = 0
     for done, (group_id, kind, member_id, track_id, path, size) in enumerate(plan, 1):
         if runner.is_cancelled(job_id):
+            done -= 1
             break
         if done % 20 == 0:
             await runner.progress(job_id, done, total, f"group {group_id}")
@@ -557,6 +563,10 @@ async def handle_dedup_apply(job_id: int, params: dict, dry_run: bool,
         except Exception as exc:
             failed += 1
             errors.append(f"{path}: {exc}")
+
+    if total:
+        await runner.progress(job_id, done, total,
+                              "stopped" if done < total else "done")
 
     # Only groups whose members were actually dealt with are closed. Marking a
     # group resolved when every move in it failed would hide the failure.

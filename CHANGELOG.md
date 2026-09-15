@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.11.4] - 2026-09-15
+
+### Fixed
+
+- **Quarantining duplicates ends on the number it moved.** A job that
+  quarantined all 838 members of the flagged groups, freed 9.7 GB and failed
+  on none showed as `done 820/838`: progress was written every twenty files
+  and never for the last ones. The loop now reports the final count — and a
+  stopped run its actual one — the way analysis ends on 100/100 and
+  conversion now reports each file. (#84)
+
 ## [2.11.3] - 2026-09-15
 
 ### Fixed
