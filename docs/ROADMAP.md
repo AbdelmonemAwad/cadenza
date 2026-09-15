@@ -176,6 +176,10 @@ that pass covered and what it turned up.
   confirmation, the new Organize page previews the plan and applies it, and
   Convert opens on the engine's suggestions when a library has no legacy
   formats. Documented with the rescan a media server needs afterwards.
+- 2.11.1: a lookup no longer drops the provider that lost a race for the
+  caller's session, and enrichment no longer holds the write lock across its
+  network calls — the provider cache reads and writes through short sessions
+  of its own.
 
 ---
 

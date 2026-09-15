@@ -23,6 +23,7 @@ from tenacity import (
 )
 
 from app.config import get_settings
+from app.db.base import SessionFactory
 from app.db.models import ProviderCache
 
 log = logging.getLogger(__name__)
@@ -100,6 +101,18 @@ class BaseProvider(abc.ABC):
     def __init__(self, session: AsyncSession | None = None,
                  client: httpx.AsyncClient | None = None) -> None:
         self.settings = get_settings()
+        # A session switches the cache on; it is not what the cache is read or
+        # written through. A lookup fans out to six providers at once, and one
+        # AsyncSession cannot be used from six coroutines: every lookup logged
+        # "This session is provisioning a new connection; concurrent
+        # operations are not permitted" and dropped the provider that lost the
+        # race. Riding the caller's transaction also opened its write
+        # transaction at the first cache miss and held SQLite's single write
+        # lock across every network call that followed, so the progress row
+        # and the interface waited out busy_timeout on "database is locked".
+        # The cache uses short sessions of its own instead: a row is read or
+        # committed in milliseconds, and the caller's transaction stays closed
+        # until the caller has something of its own to write.
         self.session = session
         self._client = client
         self._limiter = RateLimiter(self.rate_calls, self.rate_period)
@@ -161,12 +174,13 @@ class BaseProvider(abc.ABC):
     async def cache_get(self, key: str) -> Any | None:
         if self.session is None:
             return None
-        row = (await self.session.execute(
-            select(ProviderCache).where(
-                ProviderCache.provider == self.name,
-                ProviderCache.cache_key == key,
-            )
-        )).scalar_one_or_none()
+        async with SessionFactory() as s:
+            row = (await s.execute(
+                select(ProviderCache).where(
+                    ProviderCache.provider == self.name,
+                    ProviderCache.cache_key == key,
+                )
+            )).scalar_one_or_none()
         if row is None:
             return None
         if row.expires_at and row.expires_at < datetime.now(UTC).replace(tzinfo=None):
@@ -185,7 +199,9 @@ class BaseProvider(abc.ABC):
             index_elements=["provider", "cache_key"],
             set_={"payload": payload, "fetched_at": now, "expires_at": expires},
         )
-        await self.session.execute(stmt)
+        async with SessionFactory() as s:
+            await s.execute(stmt)
+            await s.commit()
 
     async def cached_json(self, key_parts: tuple, url: str, **kw) -> Any:
         key = self.cache_key(*key_parts)

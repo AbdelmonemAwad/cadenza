@@ -179,7 +179,7 @@ disk is not modified.** It does not mean nothing happens.
 | `dedup_apply` | Returns the count of members flagged for quarantine and their total bytes. Moves nothing |
 | `organize` | Returns `moved` as a *count of planned moves* plus a `preview` list of up to 300 `from`/`to` pairs. Moves nothing |
 | `convert` | Returns the computed destination path with `skipped_reason: "dry run: nothing was written"`. ffmpeg is not invoked and no source is quarantined |
-| `enrich` | **Queries the metadata providers over the network** and writes the provider cache. Reports confidence and per-field changes. Writes no tags, no artwork, no `.lrc`, and no audit row |
+| `enrich` | **Queries the metadata providers over the network** and writes the provider cache (through short sessions of its own, one commit per response). Reports confidence and per-field changes. Writes no tags, no artwork, no `.lrc`, and no audit row |
 | `quarantine_purge` | Returns quarantine statistics only |
 
 Two consequences worth holding onto:
