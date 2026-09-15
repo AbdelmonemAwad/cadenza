@@ -208,7 +208,17 @@ const ar: Catalogue<typeof en> = {
     confirmDelete:
       'خيار الإبقاء على الأصل معطّل: ستُحذف الملفات المصدر بعد كل تحويل ناجح، '
       + 'ولا يمكن التراجع. متابعة؟',
-    started: 'بدأت مهمة التحويل — تابعها من صفحة المهام.',
+    started: 'بدأت مهمة التحويل — يظهر تقدمها ونتيجتها أدناه.',
+    running: 'المهمة #{id} تعمل — اكتمل {done} من {total} ملفًا. تظهر النتيجة هنا عند انتهائها.',
+    previewTitle: 'ما سيُحوَّل',
+    resultTitle: 'ما حُوِّل',
+    wouldConvert: '{count} ملفًا سيُحوَّل — لم يُكتب شيء',
+    resultConverted: '{count} ملفًا حُوِّل',
+    resultFailed: '{count} فشل',
+    resultSkipped: '{count} لم يُحاوَل',
+    keptNote: 'أُضيف {count} ملفًا جديدًا بجوار الأصول بحجم {size} إجمالًا. الأصول محفوظة.',
+    replacedNote: 'تحرّر {size}. نُقل {count} من الأصول إلى العزل ويمكن استعادتها منه.',
+    colError: 'الخطأ',
     previewStarted: 'بدأت المعاينة — لن يُكتب أي ملف.',
     noCandidates: 'لا شيء يحتاج تحويلاً. صيغ مكتبتك في حالة جيدة.',
     estimatedSaving: 'وُفِّر {size}',
