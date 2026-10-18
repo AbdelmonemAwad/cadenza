@@ -24,7 +24,7 @@ httpx[http2]==0.28.1
 tenacity==9.0.0
 
 # --- Apple Music developer token (ES256) ---
-pyjwt[crypto]==2.10.1
+pyjwt[crypto]==2.15.0
 cryptography==44.0.0
 
 # --- scheduling and utilities ---
