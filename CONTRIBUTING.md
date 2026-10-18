@@ -146,3 +146,9 @@ dedup: index fingerprints under multiple LSH bands
 A single band lost roughly half of all re-encoded pairs, because one
 flipped bit moves the track to a different bucket.
 ```
+
+## Conduct, vulnerabilities and questions
+
+Everyone here is held to the [Code of Conduct](CODE_OF_CONDUCT.md). A vulnerability goes to the
+address in [SECURITY.md](SECURITY.md), not into an issue. A problem or an idea goes into an issue
+through its form, and a pull request through its template.
