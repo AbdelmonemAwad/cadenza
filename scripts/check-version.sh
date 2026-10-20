@@ -75,7 +75,8 @@ if [ -n "${CHECK_BUMPED:-}" ]; then
         echo "  (a shallow clone has no merge base; use fetch-depth: 0)"
         exit 1
     fi
-    changed="$(printf '%s\n' "${all_changed}" | grep -vE '^docs/|\.md$' || true)"
+    # GitHub's own files - the workflows, the templates, the Sponsor button - are never in the package.
+    changed="$(printf '%s\n' "${all_changed}" | grep -vE '^docs/|^\.github/|\.md$' || true)"
 
     if [ -z "${changed}" ]; then
         echo "  no shipped files changed; no version bump required"
