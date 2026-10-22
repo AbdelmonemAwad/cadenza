@@ -35,4 +35,4 @@ rapidfuzz==3.11.0
 # MIT, and it was never imported anywhere in the codebase -- so it added a
 # copyleft component to everything we ship in exchange for nothing. Arabic and
 # Latin normalisation is done by app/core/dedup.py without it.
-pillow==11.1.0
+pillow==13.0.0
