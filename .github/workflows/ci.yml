@@ -420,7 +420,15 @@ jobs:
           PYTHONHOME=/tmp/payload/python           PYTHONPATH=/tmp/payload/app:/tmp/payload/lib           PYTHONNOUSERSITE=1           LD_LIBRARY_PATH=/tmp/payload/python/lib:/tmp/payload/ffmpeg-lib           CADENZA_CONFIG_DIR=$(mktemp -d) CADENZA_QUARANTINE_ROOT=$(mktemp -d)           CADENZA_WWW_DIR=/tmp/payload/www           /tmp/payload/python/bin/python3 -c "
           from app.main import create_app
           app = create_app()
-          paths = {r.path for r in app.routes}
+          def walk(routes, prefix=''):
+              for r in routes:
+                  inner = getattr(r, 'original_router', None)
+                  if inner is not None:
+                      ctx = getattr(r, 'include_context', None)
+                      yield from walk(inner.routes, prefix + (getattr(ctx, 'prefix', '') or ''))
+                  elif hasattr(r, 'path'):
+                      yield prefix + r.path
+          paths = set(walk(app.routes))
           assert '/health' in paths
           print(f'  payload boots: {len(paths)} routes')
           " || { echo "::error::the packaged payload cannot start"; exit 1; }
