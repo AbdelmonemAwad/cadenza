@@ -271,7 +271,17 @@ CADENZA_QUARANTINE_ROOT="$(mktemp -d)" \
 "${STAGE}/python/bin/python3" -c "
 from app.main import create_app
 app = create_app()
-paths = {r.path for r in app.routes}
+# FastAPI 0.156 keeps an included router as one entry that carries the
+# original router and the include prefix, with no path of its own.
+def walk(routes, prefix=''):
+    for r in routes:
+        inner = getattr(r, 'original_router', None)
+        if inner is not None:
+            ctx = getattr(r, 'include_context', None)
+            yield from walk(inner.routes, prefix + (getattr(ctx, 'prefix', '') or ''))
+        elif hasattr(r, 'path'):
+            yield prefix + r.path
+paths = set(walk(app.routes))
 assert '/health' in paths, sorted(paths)[:20]
 print(f'  payload OK: {len(paths)} routes, python ' + __import__('sys').version.split()[0])
 " || die "the staged payload cannot import the application"

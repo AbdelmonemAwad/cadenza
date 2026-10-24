@@ -194,6 +194,9 @@ that pass covered and what it turned up.
   h11 0.16, python-multipart 0.0.31 — with the package's wheels moved to
   `manylinux_2_28`, which the DSM 7.2 floor already supports, and a start
   check that names the glibc it found when they cannot load.
+- 2.12.1: the backend libraries on their current releases — FastAPI 0.156,
+  SQLAlchemy 2.1, pydantic 2.14 among them — from Dependabot's first grouped
+  run, shipped the way the contributing guide says.
 
 ---
 
