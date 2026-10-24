@@ -4,6 +4,21 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.12.1] - 2026-10-24
+
+### Changed
+
+- **The backend libraries move to their current releases.** FastAPI
+  0.115 → 0.156 (on Starlette 1.9), uvicorn 0.34 → 0.54, websockets
+  14 → 17, pydantic 2.10 → 2.14, SQLAlchemy 2.0.36 → 2.1.5, aiosqlite,
+  greenlet, mutagen 1.48.1, tenacity, PyJWT 2.15.1, cryptography 50.0.2,
+  APScheduler 3.11.3, python-multipart 0.0.32, rapidfuzz 3.14.6; pytest
+  9.1.1 and ruff 0.17.1 for the suite. Dependabot's grouped pull request
+  proposed them and could not merge, like every bot pull request; the set
+  passes the whole suite, including the end-to-end API tests, with Pillow
+  kept at 13.0.0. The licence inventory follows the pins, with two new
+  transitive rows (annotated-doc, typing-inspection). (#103)
+
 ## [2.12.0] - 2026-10-24
 
 ### Security

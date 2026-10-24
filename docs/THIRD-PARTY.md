@@ -39,21 +39,21 @@ they are the ones that constrain how Cadenza may be distributed.
 
 | Component | Version | Licence | Copyleft | Used as |
 | --- | --- | --- | --- | --- |
-| mutagen | 1.47.0 | GPL-2.0-or-later | strong | **imported** |
+| mutagen | 1.48.1 | GPL-2.0-or-later | strong | **imported** |
 | ffmpeg | n9.0 (BtbN, linux64 lgpl-shared) | LGPL-3.0-or-later | weak | subprocess |
 | ffprobe | n9.0 (BtbN, linux64 lgpl-shared) | LGPL-3.0-or-later | weak | subprocess |
 | fpcalc | 1.5.1 (chromaprint, linux-x86_64) | LGPL-2.1-only | weak | subprocess |
 | certifi | 2026.7.22 | MPL-2.0 | file-level | transitive |
 
-### mutagen 1.47.0 — GPL-2.0-or-later, imported
+### mutagen 1.48.1 — GPL-2.0-or-later, imported
 
 Tag reading and writing. Imported into Cadenza's own modules, so it runs in the
 same interpreter process as Cadenza's MIT-licensed code. This is the unresolved
 item; see [The open question](#the-open-question-mutagen).
 
-Licence determined from `mutagen-1.47.0.dist-info/METADATA`
+Licence determined from `mutagen-1.48.1.dist-info/METADATA`
 (`License: GPL-2.0-or-later`, plus the GPLv2+ classifier); full text in
-`mutagen-1.47.0.dist-info/COPYING`.
+`mutagen-1.48.1.dist-info/COPYING`.
 
 ### Unidecode — removed
 
@@ -150,42 +150,44 @@ code that merely uses it. Cadenza does not modify it. Licence text at
 
 | Package | Version | Licence | Used as |
 | --- | --- | --- | --- |
-| fastapi | 0.115.6 | MIT | imported (14 files under `backend/app`) |
-| sqlalchemy | 2.0.36 | MIT | imported (19 files) |
-| pydantic | 2.10.4 | MIT | imported (9 files) |
-| rapidfuzz | 3.11.0 | MIT | imported (5 files) |
+| fastapi | 0.156.8 | MIT | imported (14 files under `backend/app`) |
+| sqlalchemy | 2.1.5 | MIT | imported (19 files) |
+| pydantic | 2.14.1 | MIT | imported (9 files) |
+| rapidfuzz | 3.14.6 | MIT | imported (5 files) |
 | httpx | 0.28.1 | BSD-3-Clause | imported (2 files); pinned with the `[http2]` extra |
-| pydantic-settings | 2.7.0 | MIT | imported (1 file) |
+| pydantic-settings | 2.16.1 | MIT | imported (1 file) |
 | pyacoustid | 1.3.1 | MIT | imported at `backend/app/core/fingerprint.py:63` |
-| tenacity | 9.0.0 | Apache-2.0 | imported (1 file) |
-| PyJWT | 2.15.0 | MIT | imported as `jwt` (1 file); pinned with the `[crypto]` extra |
-| APScheduler | 3.11.0 | MIT | imported (1 file) |
+| tenacity | 9.2.1 | Apache-2.0 | imported (1 file) |
+| PyJWT | 2.15.1 | MIT | imported as `jwt` (1 file); pinned with the `[crypto]` extra |
+| APScheduler | 3.11.3 | MIT | imported (1 file) |
 | pillow | 13.0.0 | MIT-CMU | imported as `PIL` (1 file). Publishes `manylinux_2_28` wheels only, which is why the package downloads that tag first |
 
 ### Direct pins loaded in-process, without a literal import
 
 | Package | Version | Licence | Loaded by |
 | --- | --- | --- | --- |
-| uvicorn | 0.34.0 | BSD-3-Clause | the entry point itself — `python -m uvicorn app.main:app` (`packaging/synology/scripts/start-stop-status:92`); pinned bare, not `uvicorn[standard]` |
-| websockets | 14.1 | BSD-3-Clause | uvicorn, to serve the `/jobs/stream` websocket declared at `backend/app/api/v1/jobs.py:83` |
+| uvicorn | 0.54.0 | BSD-3-Clause | the entry point itself — `python -m uvicorn app.main:app` (`packaging/synology/scripts/start-stop-status:92`); pinned bare, not `uvicorn[standard]` |
+| websockets | 17.3 | BSD-3-Clause | uvicorn, to serve the `/jobs/stream` websocket declared at `backend/app/api/v1/jobs.py:83` |
 | h11 | 0.16.0 | MIT | uvicorn, for HTTP/1.1 |
-| aiosqlite | 0.20.0 | MIT | SQLAlchemy, via the `sqlite+aiosqlite:///` URL at `backend/app/config.py:139` |
-| greenlet | 3.1.1 | MIT | SQLAlchemy's async bridge |
-| cryptography | 50.0.0 | Apache-2.0 OR BSD-3-Clause (licensee's choice) | PyJWT, for ES256 Apple Music token signing |
-| python-multipart | 0.0.31 | Apache-2.0 | starlette, for multipart form parsing |
+| aiosqlite | 0.22.1 | MIT | SQLAlchemy, via the `sqlite+aiosqlite:///` URL at `backend/app/config.py:139` |
+| greenlet | 3.5.6 | MIT | SQLAlchemy's async bridge |
+| cryptography | 50.0.2 | Apache-2.0 OR BSD-3-Clause (licensee's choice) | PyJWT, for ES256 Apple Music token signing |
+| python-multipart | 0.0.32 | Apache-2.0 | starlette, for multipart form parsing |
 
 ### Transitive dependencies
 
 | Package | Version | Licence | Comes in via |
 | --- | --- | --- | --- |
-| starlette | 0.41.3 | BSD-3-Clause | fastapi |
-| pydantic-core | 2.27.2 | MIT | pydantic |
+| starlette | 1.9.0 | BSD-3-Clause | fastapi |
+| pydantic-core | 2.50.1 | MIT | pydantic |
 | annotated-types | 0.8.0 | MIT | pydantic |
+| annotated-doc | 0.0.5 | MIT | fastapi |
+| typing-inspection | 0.4.4 | MIT | fastapi, pydantic, pydantic-settings |
 | typing-extensions | 4.16.0 | PSF-2.0 | fastapi |
-| anyio | 4.14.2 | MIT | starlette, httpx |
-| idna | 3.18 | BSD-3-Clause | httpx, anyio, requests |
+| anyio | 4.15.1 | MIT | starlette, httpx |
+| idna | 3.19 | BSD-3-Clause | httpx, anyio, requests |
 | httpcore | 1.0.9 | BSD-3-Clause | httpx; pinned since h11 0.16 needs it |
-| h2 | 4.4.0 | MIT | the `httpx[http2]` extra |
+| h2 | 4.4.1 | MIT | the `httpx[http2]` extra |
 | hpack | 4.2.0 | MIT | h2 |
 | hyperframe | 6.1.0 | MIT | h2 |
 | click | 8.4.2 | BSD-3-Clause | uvicorn |
