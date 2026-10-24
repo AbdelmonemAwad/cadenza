@@ -166,7 +166,18 @@ jobs:
             cadenza/cadenza:ci -c "
           from app.main import create_app
           app = create_app()
-          paths = sorted(r.path for r in app.routes)
+          # FastAPI 0.156 keeps an included router as one _IncludedRouter entry
+          # that carries the original router and the include prefix, so the
+          # routes are walked rather than read off the top level.
+          def walk(routes, prefix=''):
+              for r in routes:
+                  inner = getattr(r, 'original_router', None)
+                  if inner is not None:
+                      ctx = getattr(r, 'include_context', None)
+                      yield from walk(inner.routes, prefix + (getattr(ctx, 'prefix', '') or ''))
+                  elif hasattr(r, 'path'):
+                      yield prefix + r.path
+          paths = sorted(walk(app.routes))
           assert '/health' in paths, paths
           assert any(p.startswith('/api/v1/convert') for p in paths), paths
           print(f'app OK: {len(paths)} routes registered')
