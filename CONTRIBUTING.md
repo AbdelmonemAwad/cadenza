@@ -67,6 +67,16 @@ Documentation-only changes are exempt because they ship nothing.
 Add a `CHANGELOG.md` entry in the same commit. Say what the user sees, not
 what the diff does.
 
+**Dependency updates ship the same way.** Dependabot opens grouped pull
+requests once a month (`.github/dependabot.yml`), and none of them can be
+merged as it stands: a new wheel or bundle is a shipped change, and the bot
+cannot bump `VERSION`, so the package job refuses it. Take the pins onto
+`dev` by hand — the bump, the changelog line, the row in
+`docs/THIRD-PARTY.md` — run the checks above plus `python
+scripts/check-licences.py`, which downloads the `manylinux_2_17` wheels the
+package will carry and fails on a dependency that has none, and close the
+bot's pull request as superseded once the release is out.
+
 ## Before opening a pull request
 
 ```bash

@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.11.5] - 2026-10-24
+
+### Changed
+
+- **Dependencies.** PyJWT 2.10.1 → 2.15.0, Pillow 11.1.0 → 12.1.1, Vite
+  6.0.5 → 6.4.5, react-router-dom 6.28 → 7.18.4, source-map-js 1.2.1 → 1.2.2.
+  Dependabot's five pull requests could not merge: the bot cannot bump
+  `VERSION`, so the package job refused each of them, and Pillow 13 — which
+  it proposed — publishes `manylinux_2_28` wheels only, where the package is
+  built for `manylinux_2_17`. Updates now arrive grouped, one pull request
+  per ecosystem a month, Pillow 13 and later are ignored until the wheel
+  platform is raised deliberately, and the contributing guide says how an
+  update ships. (#95)
+
 ## [2.11.4] - 2026-09-15
 
 ### Fixed
