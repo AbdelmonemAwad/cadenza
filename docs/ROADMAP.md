@@ -188,6 +188,9 @@ that pass covered and what it turned up.
   audit log the numbers an earlier run replaced with `00`.
 - 2.11.4: quarantining duplicates ends on the number it moved rather than on
   the last multiple of twenty.
+- 2.11.5: dependency updates ship from `dev` with the bump the package needs;
+  Dependabot's pull requests arrive grouped and Pillow stays on the newest
+  release with a `manylinux_2_17` wheel.
 
 ---
 

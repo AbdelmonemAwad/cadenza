@@ -24,7 +24,7 @@ httpx[http2]==0.28.1
 tenacity==9.0.0
 
 # --- Apple Music developer token (ES256) ---
-pyjwt[crypto]==2.10.1
+pyjwt[crypto]==2.15.0
 cryptography==44.0.0
 
 # --- scheduling and utilities ---
@@ -35,4 +35,4 @@ rapidfuzz==3.11.0
 # MIT, and it was never imported anywhere in the codebase -- so it added a
 # copyleft component to everything we ship in exchange for nothing. Arabic and
 # Latin normalisation is done by app/core/dedup.py without it.
-pillow==11.1.0
+pillow==12.1.1

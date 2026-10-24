@@ -158,9 +158,9 @@ code that merely uses it. Cadenza does not modify it. Licence text at
 | pydantic-settings | 2.7.0 | MIT | imported (1 file) |
 | pyacoustid | 1.3.1 | MIT | imported at `backend/app/core/fingerprint.py:63` |
 | tenacity | 9.0.0 | Apache-2.0 | imported (1 file) |
-| PyJWT | 2.10.1 | MIT | imported as `jwt` (1 file); pinned with the `[crypto]` extra |
+| PyJWT | 2.15.0 | MIT | imported as `jwt` (1 file); pinned with the `[crypto]` extra |
 | APScheduler | 3.11.0 | MIT | imported (1 file) |
-| pillow | 11.1.0 | MIT-CMU | imported as `PIL` (1 file) |
+| pillow | 12.1.1 | MIT-CMU | imported as `PIL` (1 file). 12.1.1 is the newest with a `manylinux_2_17` wheel; 13 publishes `manylinux_2_28` only |
 
 ### Direct pins loaded in-process, without a literal import
 

@@ -1,0 +1,38 @@
+# Dependency updates arrive grouped, one pull request per ecosystem, once a
+# month. A bot's pull request is never merged as it stands: a new wheel or
+# bundle is a shipped change, so it needs the VERSION bump the package job
+# asks for, a changelog line and the licence-inventory row -- all taken onto
+# `dev` by hand, after which the bot's pull request is closed as superseded
+# (CONTRIBUTING.md, "Dependency updates").
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /backend
+    schedule:
+      interval: monthly
+    groups:
+      backend:
+        patterns: ["*"]
+    ignore:
+      # Pillow 13 publishes manylinux_2_28 wheels only. The package is built
+      # for manylinux_2_17 so that it runs on every DSM 7 the bundled
+      # interpreter runs on; raising that floor is a decision to take with
+      # the two machines it was built for, not one a bot takes.
+      - dependency-name: pillow
+        versions: [">=13"]
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: monthly
+    groups:
+      frontend:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
