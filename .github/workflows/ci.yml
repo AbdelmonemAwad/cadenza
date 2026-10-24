@@ -28,7 +28,7 @@ jobs:
     name: Secret scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0        # scan full history, not just the tip commit
 
@@ -48,7 +48,7 @@ jobs:
       # problem as a leaked credential: cheap to prevent, awkward to undo once
       # published. Unidecode was GPL, pinned directly, imported nowhere, and
       # shipped in both the image and the package before anyone looked.
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
@@ -66,9 +66,9 @@ jobs:
         python: ['3.11', '3.12']
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
           cache: pip
@@ -98,9 +98,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '20'
           cache: npm
@@ -126,12 +126,12 @@ jobs:
     needs: [backend, frontend]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
       - name: Build image (amd64)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: docker/Dockerfile
@@ -224,9 +224,9 @@ jobs:
       packages: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
       - uses: docker/login-action@v3
         with:
@@ -235,7 +235,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ github.repository_owner }}/cadenza
           tags: |
@@ -243,7 +243,7 @@ jobs:
             type=sha,format=short
             type=ref,event=tag
 
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: .
           file: docker/Dockerfile
@@ -270,15 +270,15 @@ jobs:
       # neither that ref nor a merge base -- so the bump gate silently did
       # nothing and had never once run since it was added. The script now fails
       # loudly if the ref is missing, and this is what makes it present.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
       # setup-python gives an isolated interpreter; a bare `pip install` on the
       # runner's system Python fails with externally-managed-environment.
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
@@ -308,7 +308,7 @@ jobs:
       # The native payload ships the built UI, so it has to exist before the
       # package is assembled. build-native-payload.sh fails rather than
       # producing a package that serves a blank page.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '20'
           cache: npm
@@ -322,7 +322,7 @@ jobs:
       # are worth caching between runs. The key covers both, since either can
       # change independently.
       - name: Cache the downloaded runtime
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: build/cache
           key: native-runtime-${{ hashFiles('packaging/synology/build-native-payload.sh', 'backend/requirements.txt') }}
@@ -438,7 +438,7 @@ jobs:
       # attempt uploaded. Without it the run held two artifacts of the same
       # name and the release job downloaded the first, incomplete one -- that
       # is how 2.10.8 was published without the chromaprint source (#71).
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: cadenza-spk
           path: dist/*.spk
@@ -450,7 +450,7 @@ jobs:
       # uploaded only when the build succeeded: the build script stages both
       # archives or dies, so a partial set means a failed build, and a failed
       # build must leave nothing behind for a rerun to release.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: cadenza-thirdparty-source
           path: build/cache/sources/*
@@ -477,7 +477,7 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Read the version
         id: v
@@ -499,7 +499,7 @@ jobs:
 
       - name: Download the package
         if: steps.check.outputs.exists == 'false'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: cadenza-spk
           path: dist
@@ -509,7 +509,7 @@ jobs:
       # LGPL 2.1 s.4 does not accept a download link as source delivery.
       - name: Download the third-party source
         if: steps.check.outputs.exists == 'false'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: cadenza-thirdparty-source
           path: dist/third-party-source
