@@ -149,8 +149,14 @@ find "${STAGE}/python" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/d
 info "resolving dependencies (wheels only, cp${PY_MM/./}) ..."
 rm -rf "${STAGE}/lib"
 mkdir -p "${STAGE}/lib"
+# manylinux_2_28 first: Pillow 13 publishes nothing older, and the package
+# refuses to install below DSM 7.2 (INFO.sh), whose glibc is 2.36. A project
+# that still publishes only manylinux_2_17 wheels resolves through the second
+# tag. The start script checks the imports before launching, and says which
+# glibc it found when they fail.
 python3 -m pip download \
     --only-binary=:all: \
+    --platform manylinux_2_28_x86_64 \
     --platform manylinux_2_17_x86_64 \
     --python-version "${PY_MM}" \
     --implementation cp \

@@ -13,13 +13,6 @@ updates:
     groups:
       backend:
         patterns: ["*"]
-    ignore:
-      # Pillow 13 publishes manylinux_2_28 wheels only. The package is built
-      # for manylinux_2_17 so that it runs on every DSM 7 the bundled
-      # interpreter runs on; raising that floor is a decision to take with
-      # the two machines it was built for, not one a bot takes.
-      - dependency-name: pillow
-        versions: [">=13"]
 
   - package-ecosystem: npm
     directory: /frontend
@@ -28,6 +21,13 @@ updates:
     groups:
       frontend:
         patterns: ["*"]
+    ignore:
+      # A major of React, TypeScript or Vite is a deliberate upgrade with
+      # its own pull request, not a monthly chore: the first grouped run
+      # proposed React 19, TypeScript 7 and Vite 8 together and failed the
+      # build. Minors and patches still arrive; so do security updates.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /

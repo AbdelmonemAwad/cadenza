@@ -288,6 +288,17 @@ start_daemon() {
         log "This is the same entry Plex, Emby and Radarr each have on that share."
     fi
 
+    # The native wheels (Pillow, cryptography) are built for manylinux_2_28,
+    # which needs glibc 2.28 or newer -- DSM 7.2 carries 2.36. If the imports
+    # fail here they would fail inside uvicorn a moment later, with a traceback
+    # at the bottom of the log; this says the one line that matters instead.
+    if ! "${PYTHON}" -c "import PIL, cryptography" >/dev/null 2>>"${LOG_FILE}"; then
+        log "ERROR: Cadenza will not start: its libraries cannot be loaded on this DSM."
+        log "  They need glibc 2.28 or newer; this system reports: $(getconf GNU_LIBC_VERSION 2>/dev/null || echo unknown)."
+        log "  DSM 7.2 and newer carry a new enough glibc. Update DSM, then start the package again."
+        return 1
+    fi
+
     log "starting on port ${CADENZA_HTTP_PORT} (music=${CADENZA_MUSIC_ROOT} data=${CADENZA_CONFIG_DIR})"
     # 0.0.0.0 because nothing proxies this -- the browser connects straight to
     # the port. One worker, because the job runner and the scheduler keep state

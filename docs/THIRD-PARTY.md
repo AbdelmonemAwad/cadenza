@@ -160,7 +160,7 @@ code that merely uses it. Cadenza does not modify it. Licence text at
 | tenacity | 9.0.0 | Apache-2.0 | imported (1 file) |
 | PyJWT | 2.15.0 | MIT | imported as `jwt` (1 file); pinned with the `[crypto]` extra |
 | APScheduler | 3.11.0 | MIT | imported (1 file) |
-| pillow | 12.1.1 | MIT-CMU | imported as `PIL` (1 file). 12.1.1 is the newest with a `manylinux_2_17` wheel; 13 publishes `manylinux_2_28` only |
+| pillow | 13.0.0 | MIT-CMU | imported as `PIL` (1 file). Publishes `manylinux_2_28` wheels only, which is why the package downloads that tag first |
 
 ### Direct pins loaded in-process, without a literal import
 
@@ -168,11 +168,11 @@ code that merely uses it. Cadenza does not modify it. Licence text at
 | --- | --- | --- | --- |
 | uvicorn | 0.34.0 | BSD-3-Clause | the entry point itself — `python -m uvicorn app.main:app` (`packaging/synology/scripts/start-stop-status:92`); pinned bare, not `uvicorn[standard]` |
 | websockets | 14.1 | BSD-3-Clause | uvicorn, to serve the `/jobs/stream` websocket declared at `backend/app/api/v1/jobs.py:83` |
-| h11 | 0.14.0 | MIT | uvicorn, for HTTP/1.1 |
+| h11 | 0.16.0 | MIT | uvicorn, for HTTP/1.1 |
 | aiosqlite | 0.20.0 | MIT | SQLAlchemy, via the `sqlite+aiosqlite:///` URL at `backend/app/config.py:139` |
 | greenlet | 3.1.1 | MIT | SQLAlchemy's async bridge |
-| cryptography | 44.0.0 | Apache-2.0 OR BSD-3-Clause (licensee's choice) | PyJWT, for ES256 Apple Music token signing |
-| python-multipart | 0.0.20 | Apache-2.0 | starlette, for multipart form parsing |
+| cryptography | 50.0.0 | Apache-2.0 OR BSD-3-Clause (licensee's choice) | PyJWT, for ES256 Apple Music token signing |
+| python-multipart | 0.0.31 | Apache-2.0 | starlette, for multipart form parsing |
 
 ### Transitive dependencies
 
@@ -184,7 +184,7 @@ code that merely uses it. Cadenza does not modify it. Licence text at
 | typing-extensions | 4.16.0 | PSF-2.0 | fastapi |
 | anyio | 4.14.2 | MIT | starlette, httpx |
 | idna | 3.18 | BSD-3-Clause | httpx, anyio, requests |
-| httpcore | 1.0.8 | BSD-3-Clause | httpx |
+| httpcore | 1.0.9 | BSD-3-Clause | httpx; pinned since h11 0.16 needs it |
 | h2 | 4.4.0 | MIT | the `httpx[http2]` extra |
 | hpack | 4.2.0 | MIT | h2 |
 | hyperframe | 6.1.0 | MIT | h2 |

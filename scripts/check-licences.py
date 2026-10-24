@@ -58,6 +58,9 @@ def resolve(requirements: Path, dest: Path) -> list[Path]:
     subprocess.run(
         [sys.executable, "-m", "pip", "download",
          "--only-binary=:all:",
+         # The same tags as build-native-payload.sh, in the same order: this
+         # must download exactly the wheels the package will carry.
+         "--platform", "manylinux_2_28_x86_64",
          "--platform", "manylinux_2_17_x86_64",
          "--python-version", "3.12",
          "--implementation", "cp",

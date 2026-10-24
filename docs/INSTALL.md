@@ -18,7 +18,7 @@ Both end up serving the same application at `http://<nas-address>:8760`.
 | | Native `.spk` (path A) | Container Manager (path B) |
 |---|---|---|
 | **CPU architecture** | `x86_64` only | `x86_64` only |
-| **DSM** | 7.2 or newer — the package declares `os_min_ver="7.2-64561"` and DSM refuses to install it below that | 7.2 or newer in practice, because Container Manager itself is a 7.2 package |
+| **DSM** | 7.2 or newer — the package declares `os_min_ver="7.2-64561"` and DSM refuses to install it below that. Its native libraries are `manylinux_2_28` wheels, which need glibc 2.28; DSM 7.2 carries 2.36, and the package checks before it starts | 7.2 or newer in practice, because Container Manager itself is a 7.2 package |
 | **Docker / Container Manager** | Not needed at all. The package declares no dependencies | Required |
 | **Free space** | Roughly 300–400 MB (interpreter, libraries and FFmpeg travel inside the package) | Roughly 2 GB for the image and the library index |
 | **Extra space** | Whatever your library index and artwork cache grow to, in the config folder | Same |

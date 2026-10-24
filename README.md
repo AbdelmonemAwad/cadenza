@@ -89,7 +89,7 @@ The interface is bilingual and mirrors fully for Arabic:
 | | |
 |---|---|
 | **Hardware** | Synology NAS, `x86_64` — DS1821+, DVA3221, DS920+, DS1621+, and similar |
-| **DSM** | 7.0 or newer |
+| **DSM** | 7.2 or newer |
 | **Prerequisite** | None for the DSM package. Container Manager only if you choose to run the container instead |
 | **Free space** | ~1 GB for the package, plus the library index |
 
