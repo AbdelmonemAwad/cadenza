@@ -189,8 +189,11 @@ that pass covered and what it turned up.
 - 2.11.4: quarantining duplicates ends on the number it moved rather than on
   the last multiple of twenty.
 - 2.11.5: dependency updates ship from `dev` with the bump the package needs;
-  Dependabot's pull requests arrive grouped and Pillow stays on the newest
-  release with a `manylinux_2_17` wheel.
+  Dependabot's pull requests arrive grouped.
+- 2.12.0: the 180 open security alerts closed — Pillow 13, cryptography 50,
+  h11 0.16, python-multipart 0.0.31 — with the package's wheels moved to
+  `manylinux_2_28`, which the DSM 7.2 floor already supports, and a start
+  check that names the glibc it found when they cannot load.
 
 ---
 

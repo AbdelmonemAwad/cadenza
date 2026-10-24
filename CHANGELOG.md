@@ -4,6 +4,33 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.12.0] - 2026-10-24
+
+### Security
+
+- **Pillow 13.0.0, cryptography 50.0.0, h11 0.16.0, python-multipart 0.0.31.**
+  The Security tab listed 180 open alerts — 14 critical — nearly all of
+  them these four packages in the two requirements files. Pillow decodes
+  artwork fetched from the providers and artwork embedded in files that came
+  from anywhere, and 38 of its advisories, among them a heap overflow in the
+  JPEG decoder, are fixed only in 13. Pillow 13 publishes `manylinux_2_28`
+  wheels only, which is what had held it back; the package already refuses
+  to install below DSM 7.2, whose glibc (2.36) is newer than the 2.28 those
+  wheels need, so the package build and the licence check now download
+  `manylinux_2_28` wheels first and `manylinux_2_17` where that is all a
+  project publishes. The start script checks that the libraries load before
+  launching and, when they do not, writes the glibc it found and the version
+  needed to the package log. (#100)
+
+### Changed
+
+- `httpcore` is pinned (1.0.9) because h11 0.16 needs it; pytest 9.0.3 and
+  pytest-asyncio 1.4.0 for the test suite; the GitHub Actions in CI move to
+  their current majors.
+- README says DSM 7.2 or newer, as the package and the install guide already
+  did. Dependabot no longer proposes a major of the frontend toolchain on
+  its own; the Pillow exception is gone.
+
 ## [2.11.5] - 2026-10-24
 
 ### Changed
